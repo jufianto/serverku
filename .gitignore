@@ -4,3 +4,4 @@ config
 *.terraform.lock.hcl
 *.tfstate
 *.backup
+*.tfvars

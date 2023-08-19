@@ -1,2 +1,0 @@
-region = "value"
-projectID = "value"

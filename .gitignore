@@ -1,2 +1,7 @@
 config
 .vscode
+*.terraform/
+*.terraform.lock.hcl
+*.tfstate
+*.backup
+*.tfvars

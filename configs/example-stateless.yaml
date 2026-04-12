@@ -1,0 +1,23 @@
+# Example: Stateless API connecting to external database
+# No persistent disk - all state lives in external services
+
+name: stateless-api
+provider: gcp
+region: us-central1
+zone: us-central1-a
+
+vm:
+  size: e2-small
+  image: ubuntu-22-04
+  spot: true
+
+storage:
+  enabled: false                 # No persistent disk
+
+compose_file: ./docker-compose.yml
+
+startup_commands:
+  - "docker compose up -d"
+
+notify:
+  telegram_chat_id: ""

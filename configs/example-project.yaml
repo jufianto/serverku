@@ -1,0 +1,29 @@
+# Example: Full-stack app with persistent storage
+# Copy this file to ~/.serverku/projects/my-project.yaml and customize
+
+name: example-project
+provider: gcp                    # "gcp" or "digitalocean"
+region: asia-southeast1          # GCP region or DO region slug
+zone: asia-southeast1-b          # GCP zone (not needed for DO)
+
+vm:
+  size: e2-medium                # GCP: e2-micro, e2-small, e2-medium, etc.
+                                 # DO: s-1vcpu-1gb, s-1vcpu-2gb, etc.
+  image: ubuntu-22-04            # OS image
+  spot: true                     # Use SPOT/preemptible instances (cheaper, can be reclaimed)
+
+storage:
+  enabled: true                  # Set to false for fully stateless VMs
+  size_gb: 20                    # Persistent disk size in GB
+  mount_path: /data              # Where to mount the disk inside the VM
+
+# Path to your docker-compose.yml (relative to project config or absolute)
+compose_file: ./docker-compose.yml
+
+# Commands to run after Docker is installed and disk is mounted
+startup_commands:
+  - "docker compose -f /data/docker-compose.yml up -d"
+
+# Optional: Telegram notifications when server goes up/down
+notify:
+  telegram_chat_id: ""           # Your Telegram chat ID (leave empty to disable)

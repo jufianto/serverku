@@ -1,4 +1,4 @@
-config
+/config
 .vscode
 *.terraform/
 *.terraform.lock.hcl

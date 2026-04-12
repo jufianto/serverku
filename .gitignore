@@ -5,3 +5,6 @@ config
 *.tfstate
 *.backup
 *.tfvars
+
+# Build artifacts
+/serverku

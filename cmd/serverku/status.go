@@ -8,6 +8,7 @@ import (
 
 	"github.com/jufianto/serverku/internal/config"
 	"github.com/jufianto/serverku/internal/orchestrator"
+	"github.com/jufianto/serverku/internal/pricing"
 	"github.com/jufianto/serverku/internal/provisioner"
 	"github.com/spf13/cobra"
 )
@@ -58,19 +59,19 @@ func newListCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tPROVIDER\tSTATUS\tIP\tSTORAGE")
-			fmt.Fprintln(w, "----\t--------\t------\t--\t-------")
+			fmt.Fprintln(w, "NAME\tPROVIDER\tSTATUS\tIP\tSTORAGE\tEST. COST")
+			fmt.Fprintln(w, "----\t--------\t------\t--\t-------\t---------")
 
 			for _, name := range names {
 				cfg, err := store.LoadProject(name)
 				if err != nil {
-					fmt.Fprintf(w, "%s\t-\terror\t-\t-\n", name)
+					fmt.Fprintf(w, "%s\t-\terror\t-\t-\t-\n", name)
 					continue
 				}
 
 				state, err := store.LoadState(name)
 				if err != nil {
-					fmt.Fprintf(w, "%s\t%s\terror\t-\t-\n", name, cfg.Provider)
+					fmt.Fprintf(w, "%s\t%s\terror\t-\t-\t-\n", name, cfg.Provider)
 					continue
 				}
 
@@ -84,8 +85,10 @@ func newListCmd() *cobra.Command {
 					storage = fmt.Sprintf("%dGB", cfg.Storage.SizeGB)
 				}
 
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-					name, cfg.Provider, state.Status, ip, storage)
+
+				estimate := pricing.FormatListEstimate(pricing.EstimateCost(cfg), state.IsRunning())
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+					name, cfg.Provider, state.Status, ip, storage, estimate)
 			}
 
 			return w.Flush()

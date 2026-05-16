@@ -10,6 +10,7 @@ import (
 	"github.com/jufianto/serverku/internal/notify/slack"
 	"github.com/jufianto/serverku/internal/notify/telegram"
 	"github.com/jufianto/serverku/internal/orchestrator"
+	"github.com/jufianto/serverku/internal/pricing"
 	"github.com/jufianto/serverku/internal/provider"
 	"github.com/jufianto/serverku/internal/provider/digitalocean"
 	"github.com/jufianto/serverku/internal/provider/gcp"
@@ -92,6 +93,9 @@ the external IP shown on completion.`,
 			fmt.Printf("  VM:          %s (id: %s)\n", result.VMName, result.VMID)
 			if result.DiskName != "" {
 				fmt.Printf("  Disk:        %s (id: %s)\n", result.DiskName, result.DiskID)
+			}
+			for _, line := range pricing.FormatUpEstimate(pricing.EstimateCost(cfg)) {
+				fmt.Println(line)
 			}
 			fmt.Println()
 			fmt.Printf("SSH: ssh serverku@%s\n", result.ExternalIP)

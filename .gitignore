@@ -8,3 +8,6 @@
 
 # Build artifacts
 /serverku
+
+# macOS
+.DS_Store

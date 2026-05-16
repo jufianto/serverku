@@ -6,8 +6,12 @@ import (
 	"log"
 
 	"github.com/jufianto/serverku/internal/config"
+	"github.com/jufianto/serverku/internal/notify"
+	"github.com/jufianto/serverku/internal/notify/slack"
+	"github.com/jufianto/serverku/internal/notify/telegram"
 	"github.com/jufianto/serverku/internal/orchestrator"
 	"github.com/jufianto/serverku/internal/provider"
+	"github.com/jufianto/serverku/internal/provider/digitalocean"
 	"github.com/jufianto/serverku/internal/provider/gcp"
 	"github.com/jufianto/serverku/internal/provisioner"
 	"github.com/spf13/cobra"
@@ -21,11 +25,29 @@ func newProviderFactory() orchestrator.ProviderFactory {
 		case "gcp":
 			return gcp.New(ctx, cfg.ProjectID, cfg.Zone)
 		case "digitalocean":
-			return nil, fmt.Errorf("DigitalOcean provider not yet implemented")
+			return digitalocean.New(ctx)
 		default:
 			return nil, fmt.Errorf("unsupported provider: %s", cfg.Provider)
 		}
 	}
+}
+
+// buildNotifier constructs a MultiNotifier based on the project configuration.
+func buildNotifier(cfg *config.ProjectConfig) notify.Notifier {
+	var notifiers []notify.Notifier
+
+	if cfg.Notifications.Slack.WebhookURL != "" {
+		notifiers = append(notifiers, slack.New(cfg.Notifications.Slack.WebhookURL))
+	}
+	
+	if cfg.Notifications.Telegram.BotToken != "" && cfg.Notifications.Telegram.ChatID != "" {
+		notifiers = append(notifiers, telegram.New(cfg.Notifications.Telegram.BotToken, cfg.Notifications.Telegram.ChatID))
+	}
+
+	if len(notifiers) == 0 {
+		return &notify.NoopNotifier{}
+	}
+	return notify.NewMultiNotifier(notifiers...)
 }
 
 func newUpCmd() *cobra.Command {
@@ -54,7 +76,9 @@ the external IP shown on completion.`,
 			}
 			fmt.Println()
 
-			orch := orchestrator.New(store, &provisioner.SSHProvisioner{}, nil)
+			notifier := buildNotifier(cfg)
+			prov := &provisioner.SSHProvisioner{}
+			orch := orchestrator.New(store, prov, notifier)
 			factory := newProviderFactory()
 
 			result, err := orch.Up(cmd.Context(), name, factory)
@@ -90,7 +114,7 @@ Your data on the persistent disk is preserved for the next 'serverku up'.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			_, err := store.LoadProject(name)
+			cfg, err := store.LoadProject(name)
 			if err != nil {
 				return err
 			}
@@ -108,7 +132,9 @@ Your data on the persistent disk is preserved for the next 'serverku up'.`,
 
 			fmt.Printf("Stopping project %q...\n", name)
 
-			orch := orchestrator.New(store, &provisioner.SSHProvisioner{}, nil)
+			notifier := buildNotifier(cfg)
+			prov := &provisioner.SSHProvisioner{}
+			orch := orchestrator.New(store, prov, notifier)
 			factory := newProviderFactory()
 
 			if err := orch.Down(cmd.Context(), name, factory); err != nil {
@@ -138,7 +164,7 @@ This action is irreversible - all data will be permanently lost.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			_, err := store.LoadProject(name)
+			cfg, err := store.LoadProject(name)
 			if err != nil {
 				return err
 			}
@@ -157,7 +183,9 @@ This action is irreversible - all data will be permanently lost.`,
 
 			fmt.Printf("Destroying project %q...\n", name)
 
-			orch := orchestrator.New(store, &provisioner.SSHProvisioner{}, nil)
+			notifier := buildNotifier(cfg)
+			prov := &provisioner.SSHProvisioner{}
+			orch := orchestrator.New(store, prov, notifier)
 			factory := newProviderFactory()
 
 			if err := orch.Destroy(cmd.Context(), name, factory); err != nil {

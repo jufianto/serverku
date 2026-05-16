@@ -233,6 +233,9 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		DiskName:        state.DiskName,
 		MountPath:       cfg.Storage.MountPath,
 		ComposeContent:  composeContent,
+		SyncDir:         cfg.SyncDir,
+		RouterEnabled:   cfg.Router.Enabled,
+		Domains:         cfg.Router.Domains,
 		StartupCommands: cfg.StartupCommands,
 	}
 	if err := o.provisioner.Provision(ctx, provOpts); err != nil {
@@ -496,5 +499,10 @@ func (o *Orchestrator) setErrorState(state *config.ProjectState, errMsg string) 
 	state.ErrorMsg = errMsg
 	if err := o.store.SaveState(state); err != nil {
 		log.Printf("[orchestrator] failed to save error state: %v", err)
+	}
+
+	// Send error notification
+	if err := o.notifier.SendError(context.Background(), state.ProjectName, fmt.Errorf("%s", errMsg)); err != nil {
+		log.Printf("[orchestrator] failed to send error notification: %v", err)
 	}
 }

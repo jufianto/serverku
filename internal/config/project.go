@@ -21,11 +21,47 @@ type ProjectConfig struct {
 	// Can be relative (to the project config directory) or absolute.
 	ComposeFile string `yaml:"compose_file,omitempty"`
 
+	// SyncDir is the path to a local directory to synchronize to the remote VM.
+	SyncDir string `yaml:"sync_dir,omitempty"`
+
 	// StartupCommands are shell commands to run after provisioning is complete.
 	StartupCommands []string `yaml:"startup_commands,omitempty"`
 
-	// Notify holds optional notification settings.
-	Notify NotifyConfig `yaml:"notify,omitempty"`
+	// Router holds automatic HTTPS routing and reverse proxy configuration via caddyku.
+	Router RouterConfig `yaml:"router,omitempty"`
+
+	// Notifications holds optional notification settings.
+	Notifications NotificationsConfig `yaml:"notifications,omitempty"`
+}
+
+// NotificationsConfig holds notification settings.
+type NotificationsConfig struct {
+	Slack    SlackConfig    `yaml:"slack,omitempty"`
+	Telegram TelegramConfig `yaml:"telegram,omitempty"`
+}
+
+// RouterConfig holds caddyku routing configuration.
+type RouterConfig struct {
+	Enabled bool           `yaml:"enabled"`
+	Domains []DomainConfig `yaml:"domains,omitempty"`
+}
+
+// DomainConfig holds routing configuration for a specific domain.
+type DomainConfig struct {
+	Domain   string `yaml:"domain"`
+	Service  string `yaml:"service"`
+	Upstream string `yaml:"upstream"`
+}
+
+// SlackConfig holds Slack notification settings.
+type SlackConfig struct {
+	WebhookURL string `yaml:"webhook_url,omitempty"`
+}
+
+// TelegramConfig holds Telegram notification settings.
+type TelegramConfig struct {
+	BotToken string `yaml:"bot_token,omitempty"`
+	ChatID   string `yaml:"chat_id,omitempty"`
 }
 
 // VMConfig holds VM-specific configuration.

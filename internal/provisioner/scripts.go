@@ -95,3 +95,32 @@ sudo umount "%s" || true
 	}
 	return script
 }
+
+// installCaddykuScript returns a shell script that downloads and installs caddyku
+func installCaddykuScript() string {
+	return `set -e
+echo "Installing caddyku..."
+curl -sSL https://github.com/jufianto/caddyku/releases/latest/download/caddyku_linux_amd64.tar.gz | tar -xz
+sudo mv caddyku /usr/local/bin/
+`
+}
+
+// initCaddyProxyScript returns a shell script that runs caddyku init
+func initCaddyProxyScript() string {
+	return `set -e
+echo "Initializing caddy proxy network..."
+caddyku init
+cd ~/projects/caddy-proxy
+docker compose up -d
+`
+}
+
+// configureAppDomainsScript returns a bash command that loops over domains and configures them
+func configureAppDomainsScript(domains []string, services []string, upstreams []string, composeDir string) string {
+	script := fmt.Sprintf("set -e\ncd \"%s\"\n", composeDir)
+	for i, domain := range domains {
+		script += fmt.Sprintf("echo \"Configuring domain %s...\"\n", domain)
+		script += fmt.Sprintf("caddyku init-app --service %s --domain %s --upstream %s\n", services[i], domain, upstreams[i])
+	}
+	return script
+}

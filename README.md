@@ -22,7 +22,6 @@ Cloud VMs are billed while they are running, even when nobody is using them. For
 - **SSH utilities**: Open shells, stream Compose logs, and create secure port tunnels through managed SSH keys.
 - **Notifications**: Send lifecycle updates to Slack and Telegram.
 - **Cost estimates**: Show rough local VM/storage cost estimates in CLI output.
-- **Spec-driven development**: Uses OpenSpec for planning medium-to-large features.
 
 ## Status
 

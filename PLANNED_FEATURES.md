@@ -1,6 +1,6 @@
 # Planned Features for Serverku & Caddyku Integration
 
-Based on our discussion, here is a breakdown of the features we want to build. This document serves as a blueprint before we formally propose them via OpenSpec.
+Based on our discussion, here is a breakdown of the features we want to build. This document serves as a blueprint before we formally build them.
 
 ## 1. Project Artifact Sync (SCP/Rsync)
 **Goal:** Allow users to securely transfer their entire project directory (including `.env` files, configs, and source code) to the remote VM, rather than just copying a single `docker-compose.yml`.
@@ -67,6 +67,6 @@ Based on our discussion, here is a breakdown of the features we want to build. T
 ---
 
 ### Next Steps
-If you agree with this scope, we can create OpenSpec proposals for these features. We can start with **`.env` Support** and the **Interactive `init`**, and then tackle the **`caddyku` Integration**! 
+If you agree with this scope, we can start with **`.env` Support** and the **Interactive `init`**, and then tackle the **`caddyku` Integration**!
 
-Let me know if you want to modify this plan or if you want to jump straight into proposing one of these using `/opsx:propose`!
+Let me know if you want to modify this plan or jump straight into building one of these.

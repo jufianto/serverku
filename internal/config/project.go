@@ -33,6 +33,9 @@ type ProjectConfig struct {
 	// DNS holds automatic DNS record management settings.
 	DNS DNSConfig `yaml:"dns,omitempty"`
 
+	// Hooks holds shell commands run on the LOCAL machine at lifecycle boundaries.
+	Hooks HooksConfig `yaml:"hooks,omitempty"`
+
 	// Notifications holds optional notification settings.
 	Notifications NotificationsConfig `yaml:"notifications,omitempty"`
 }
@@ -43,6 +46,19 @@ type ProjectConfig struct {
 type DNSConfig struct {
 	Enabled bool `yaml:"enabled"`
 	TTL     int  `yaml:"ttl,omitempty"` // record TTL in seconds, defaults to 3600
+}
+
+// HooksConfig holds shell commands run on the local machine (not the VM) around
+// lifecycle operations. pre_* hooks gate the operation: if one fails, the
+// operation is aborted. post_* hooks run after a successful operation and are
+// best-effort (a failure is logged but does not fail the command).
+type HooksConfig struct {
+	PreUp       []string `yaml:"pre_up,omitempty"`
+	PostUp      []string `yaml:"post_up,omitempty"`
+	PreDown     []string `yaml:"pre_down,omitempty"`
+	PostDown    []string `yaml:"post_down,omitempty"`
+	PreDestroy  []string `yaml:"pre_destroy,omitempty"`
+	PostDestroy []string `yaml:"post_destroy,omitempty"`
 }
 
 // NotificationsConfig holds notification settings.

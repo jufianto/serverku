@@ -136,7 +136,7 @@ func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) erro
 
 	if opts.SyncDir != "" {
 		log.Printf("[provisioner] syncing directory %s to %s...", opts.SyncDir, composeDir)
-		
+
 		rsyncBin, err := exec.LookPath("rsync")
 		if err != nil {
 			return fmt.Errorf("rsync not found in PATH. Please install rsync for directory synchronization: %w", err)
@@ -144,7 +144,7 @@ func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) erro
 
 		sshOpts := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR", opts.PrivateKeyPath)
 		dest := fmt.Sprintf("%s@%s:%s/", opts.SSHUser, opts.Host, composeDir)
-		
+
 		rsyncCmd := exec.CommandContext(ctx, rsyncBin,
 			"-avz",
 			"-e", sshOpts,
@@ -154,7 +154,7 @@ func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) erro
 			opts.SyncDir+"/", // Trailing slash to copy contents
 			dest,
 		)
-		
+
 		out, err := rsyncCmd.CombinedOutput()
 		if err != nil {
 			log.Printf("[provisioner] rsync output:\n%s", out)

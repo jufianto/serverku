@@ -213,7 +213,7 @@ func (p *Provider) StartVM(ctx context.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("failed to power on droplet: %w", err)
 	}
-	
+
 	_ = action
 	return nil
 }
@@ -249,7 +249,7 @@ func (p *Provider) WaitForReady(ctx context.Context, name string) error {
 		} else if status.State == provider.VMStateRunning {
 			return nil
 		}
-		
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -333,14 +333,14 @@ func (p *Provider) AttachDisk(ctx context.Context, vmName, diskName string) erro
 		if err == nil && a.Status == "errored" {
 			return fmt.Errorf("volume attachment errored")
 		}
-		
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(5 * time.Second):
 		}
 	}
-	
+
 	return fmt.Errorf("timeout waiting for volume to attach")
 }
 
@@ -370,7 +370,7 @@ func (p *Provider) DetachDisk(ctx context.Context, vmName, diskName string) erro
 		if err == nil && a.Status == "errored" {
 			return fmt.Errorf("volume detachment errored")
 		}
-		
+
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

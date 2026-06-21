@@ -18,9 +18,9 @@ var vmHourlyUSD = map[string]map[string]float64{
 		"s-8vcpu-16gb": 0.14286,
 	},
 	"gcp": {
-		"e2-micro":    0.00838,
-		"e2-small":    0.01675,
-		"e2-medium":   0.03350,
+		"e2-micro":      0.00838,
+		"e2-small":      0.01675,
+		"e2-medium":     0.03350,
 		"e2-standard-2": 0.06701,
 		"e2-standard-4": 0.13401,
 	},

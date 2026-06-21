@@ -24,7 +24,7 @@ func TestNew_MissingToken(t *testing.T) {
 func TestCreateVM_SpotNotSupported(t *testing.T) {
 	// Since we mock New without a token, we just create an empty provider
 	p := &Provider{}
-	
+
 	_, err := p.CreateVM(context.Background(), provider.VMConfig{
 		Spot: true,
 	})

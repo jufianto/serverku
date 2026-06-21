@@ -85,7 +85,6 @@ func newListCmd() *cobra.Command {
 					storage = fmt.Sprintf("%dGB", cfg.Storage.SizeGB)
 				}
 
-
 				estimate := pricing.FormatListEstimate(pricing.EstimateCost(cfg), state.IsRunning())
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 					name, cfg.Provider, state.Status, ip, storage, estimate)

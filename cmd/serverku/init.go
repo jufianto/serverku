@@ -238,8 +238,12 @@ func runInteractiveInit(name string) error {
 
 	// Process answers
 	if provider == "digitalocean" {
-		if region == defaultRegion { region = "sgp1" } // fallback if left as default GCP region
-		if vmSize == defaultSize { vmSize = "s-1vcpu-1gb" }
+		if region == defaultRegion {
+			region = "sgp1"
+		} // fallback if left as default GCP region
+		if vmSize == defaultSize {
+			vmSize = "s-1vcpu-1gb"
+		}
 	}
 
 	sizeGB := 20

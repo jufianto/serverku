@@ -9,8 +9,8 @@ import (
 func TestEstimateCostDigitalOcean(t *testing.T) {
 	cfg := &config.ProjectConfig{
 		Provider: "digitalocean",
-		VM: config.VMConfig{Size: "s-1vcpu-1gb"},
-		Storage: config.StorageConfig{Enabled: true, SizeGB: 10},
+		VM:       config.VMConfig{Size: "s-1vcpu-1gb"},
+		Storage:  config.StorageConfig{Enabled: true, SizeGB: 10},
 	}
 
 	est := EstimateCost(cfg)
@@ -31,8 +31,8 @@ func TestEstimateCostDigitalOcean(t *testing.T) {
 func TestEstimateCostGCP(t *testing.T) {
 	cfg := &config.ProjectConfig{
 		Provider: "gcp",
-		VM: config.VMConfig{Size: "e2-medium"},
-		Storage: config.StorageConfig{Enabled: true, SizeGB: 20},
+		VM:       config.VMConfig{Size: "e2-medium"},
+		Storage:  config.StorageConfig{Enabled: true, SizeGB: 20},
 	}
 
 	est := EstimateCost(cfg)
@@ -53,8 +53,8 @@ func TestEstimateCostGCP(t *testing.T) {
 func TestEstimateCostUnknownSizeAndDisabledStorage(t *testing.T) {
 	cfg := &config.ProjectConfig{
 		Provider: "digitalocean",
-		VM: config.VMConfig{Size: "unknown-size"},
-		Storage: config.StorageConfig{Enabled: false},
+		VM:       config.VMConfig{Size: "unknown-size"},
+		Storage:  config.StorageConfig{Enabled: false},
 	}
 
 	est := EstimateCost(cfg)

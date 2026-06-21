@@ -40,7 +40,7 @@ func buildNotifier(cfg *config.ProjectConfig) notify.Notifier {
 	if cfg.Notifications.Slack.WebhookURL != "" {
 		notifiers = append(notifiers, slack.New(cfg.Notifications.Slack.WebhookURL))
 	}
-	
+
 	if cfg.Notifications.Telegram.BotToken != "" && cfg.Notifications.Telegram.ChatID != "" {
 		notifiers = append(notifiers, telegram.New(cfg.Notifications.Telegram.BotToken, cfg.Notifications.Telegram.ChatID))
 	}

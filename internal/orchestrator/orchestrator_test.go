@@ -24,6 +24,7 @@ type mockProvider struct {
 	deleteDiskFunc    func(ctx context.Context, diskID string) error
 	attachDiskFunc    func(ctx context.Context, vmID string, diskID string) error
 	detachDiskFunc    func(ctx context.Context, vmID string, diskID string) error
+	snapshotDiskFunc  func(ctx context.Context, diskName string, snapshotName string) (string, error)
 
 	// Track calls for assertions
 	calls []string
@@ -115,6 +116,14 @@ func (m *mockProvider) DetachDisk(ctx context.Context, vmID string, diskID strin
 		return m.detachDiskFunc(ctx, vmID, diskID)
 	}
 	return nil
+}
+
+func (m *mockProvider) SnapshotDisk(ctx context.Context, diskName string, snapshotName string) (string, error) {
+	m.calls = append(m.calls, "SnapshotDisk")
+	if m.snapshotDiskFunc != nil {
+		return m.snapshotDiskFunc(ctx, diskName, snapshotName)
+	}
+	return "snap-789", nil
 }
 
 // testSetup creates a temp directory, store, and saves a test project config.

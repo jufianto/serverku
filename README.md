@@ -18,7 +18,8 @@ Cloud VMs are billed while they are running, even when nobody is using them. For
 - **Project sync**: Sync full project directories with `rsync`, including `.env`, configs, and build context.
 - **Local hooks**: Run local commands around the lifecycle (e.g. build assets before `up`, clean up after `down`).
 - **Automatic HTTPS routing**: Integrate with [`caddyku`](https://github.com/jufianto/caddyku) to route domains to Compose services with Caddy and Let's Encrypt.
-- **DNS automation**: Optionally create/update A records for your domains on `up` (DigitalOcean).
+- **DNS automation**: Optionally create/update A records for your domains on `up` (GCP and DigitalOcean).
+- **Snapshots**: Back up a project's persistent disk with `serverku backup`.
 - **Interactive setup**: Create project configs through a guided `serverku init` wizard.
 - **GCP and DigitalOcean providers**: Provision Compute Engine instances or DigitalOcean Droplets.
 - **SSH utilities**: Open shells, stream Compose logs, and create secure port tunnels through managed SSH keys.
@@ -246,6 +247,7 @@ This removes cloud resources and local project state/config. Treat it as irrever
 | `serverku ssh <project>` | Open an interactive SSH shell. |
 | `serverku logs <project>` | Stream remote `docker compose logs -f`. |
 | `serverku tunnel <project> <local>:<remote>` | Open an SSH port-forwarding tunnel. |
+| `serverku backup <project>` | Snapshot the project's persistent disk. |
 
 Global flags:
 
@@ -393,17 +395,38 @@ dns:
 
 Notes:
 
-- **DigitalOcean only** for now. The domain's nameservers must already be
-  delegated to DigitalOcean (the apex zone must exist in your DO account);
-  `serverku` matches each FQDN to the longest managed zone and writes the
-  record. GCP DNS automation is planned — enabling `dns` on a GCP project fails
-  fast with a clear error rather than silently skipping.
+- **DigitalOcean and GCP are both supported.** The domain's apex zone must
+  already be managed by the provider — delegated to DigitalOcean, or a Cloud DNS
+  managed zone in your GCP project. `serverku` matches each FQDN to the longest
+  managed zone and writes the record (no zone name to configure).
 - Record changes are idempotent: a record already pointing at the IP is left
   unchanged.
 - A DNS write failure aborts `up` and tears down the VM (persistent storage is
   preserved).
 - Freshly created records may take time to propagate; Caddy retries certificate
   issuance, but a low `ttl` helps during initial setup.
+
+## Backups
+
+`serverku backup <project>` snapshots the project's persistent disk via the cloud
+provider. The VM may be up or down — only the disk is required.
+
+```bash
+serverku backup myapp
+# Snapshot created: serverku-myapp-20260621-120000 (id: ...) from disk serverku-myapp-data
+serverku backup myapp --name pre-migration
+```
+
+Notes:
+
+- A snapshot name is generated as `serverku-<project>-<timestamp>` unless you pass
+  `--name`.
+- Snapshots are crash-consistent (taken live); for application-consistent backups,
+  quiesce or stop the workload first (e.g. `serverku down`, then `backup`).
+- The project must have `storage.enabled` and an existing disk (run `serverku up`
+  at least once).
+- Restoring from a snapshot is not yet automated — create a volume/disk from the
+  snapshot in your provider console for now.
 
 ## Cost Estimates
 
@@ -468,8 +491,7 @@ See `INTERNAL_README.md` for a deeper feature-by-feature verification matrix and
 ## Roadmap
 
 - Real provider-backed pricing.
-- DNS automation for GCP (DigitalOcean is implemented).
-- Snapshot and backup management.
+- Snapshot restore and scheduled/automatic backups.
 - More offline command/script tests.
 - Additional cloud providers later.
 

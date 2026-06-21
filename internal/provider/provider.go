@@ -39,6 +39,10 @@ type CloudProvider interface {
 
 	// DetachDisk detaches a persistent disk from a VM.
 	DetachDisk(ctx context.Context, vmID string, diskID string) error
+
+	// SnapshotDisk creates a snapshot of a persistent disk and returns the
+	// provider-specific snapshot identifier.
+	SnapshotDisk(ctx context.Context, diskName string, snapshotName string) (string, error)
 }
 
 // DNSManager is an optional capability implemented by cloud providers that can

@@ -79,7 +79,7 @@ the external IP shown on completion.`,
 
 			notifier := buildNotifier(cfg)
 			prov := &provisioner.SSHProvisioner{}
-			orch := orchestrator.New(store, prov, notifier)
+			orch := orchestrator.New(store, prov, notifier, nil)
 			factory := newProviderFactory()
 
 			result, err := orch.Up(cmd.Context(), name, factory)
@@ -138,7 +138,7 @@ Your data on the persistent disk is preserved for the next 'serverku up'.`,
 
 			notifier := buildNotifier(cfg)
 			prov := &provisioner.SSHProvisioner{}
-			orch := orchestrator.New(store, prov, notifier)
+			orch := orchestrator.New(store, prov, notifier, nil)
 			factory := newProviderFactory()
 
 			if err := orch.Down(cmd.Context(), name, factory); err != nil {
@@ -189,7 +189,7 @@ This action is irreversible - all data will be permanently lost.`,
 
 			notifier := buildNotifier(cfg)
 			prov := &provisioner.SSHProvisioner{}
-			orch := orchestrator.New(store, prov, notifier)
+			orch := orchestrator.New(store, prov, notifier, nil)
 			factory := newProviderFactory()
 
 			if err := orch.Destroy(cmd.Context(), name, factory); err != nil {

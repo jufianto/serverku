@@ -8,10 +8,25 @@ import (
 	"time"
 
 	"github.com/jufianto/serverku/internal/config"
+	"github.com/jufianto/serverku/internal/hooks"
 	"github.com/jufianto/serverku/internal/notify"
 	"github.com/jufianto/serverku/internal/provider"
 	"github.com/jufianto/serverku/internal/provisioner"
 )
+
+// HookRunner runs a project's local lifecycle hook commands. It is an interface
+// so tests can assert hook invocation without spawning shells.
+type HookRunner interface {
+	Run(ctx context.Context, phase string, commands []string, workDir string, env []string) error
+}
+
+// defaultHookRunner executes hooks via the hooks package, streaming output to
+// the process stdout/stderr.
+type defaultHookRunner struct{}
+
+func (defaultHookRunner) Run(ctx context.Context, phase string, commands []string, workDir string, env []string) error {
+	return hooks.Run(ctx, phase, commands, hooks.Options{WorkDir: workDir, Env: env})
+}
 
 // Orchestrator coordinates the lifecycle of serverku projects.
 // It ties together the cloud provider, config store, and notifier to implement
@@ -20,23 +35,51 @@ type Orchestrator struct {
 	store       *config.Store
 	provisioner provisioner.Provisioner
 	notifier    notify.Notifier
+	hooks       HookRunner
 }
 
 // New creates a new Orchestrator.
 // If prov is nil, a NoopProvisioner is used (no SSH provisioning).
 // If notifier is nil, a NoopNotifier is used.
-func New(store *config.Store, prov provisioner.Provisioner, notifier notify.Notifier) *Orchestrator {
+// If hookRunner is nil, a default runner that executes hooks via `sh -c` is used.
+func New(store *config.Store, prov provisioner.Provisioner, notifier notify.Notifier, hookRunner HookRunner) *Orchestrator {
 	if prov == nil {
 		prov = &provisioner.NoopProvisioner{}
 	}
 	if notifier == nil {
 		notifier = &notify.NoopNotifier{}
 	}
+	if hookRunner == nil {
+		hookRunner = defaultHookRunner{}
+	}
 	return &Orchestrator{
 		store:       store,
 		provisioner: prov,
 		notifier:    notifier,
+		hooks:       hookRunner,
 	}
+}
+
+// hookWorkDir returns the directory hooks run in: the project's sync_dir when
+// set (where a local build naturally happens), else the current process dir.
+func hookWorkDir(cfg *config.ProjectConfig) string {
+	if cfg.SyncDir != "" {
+		return cfg.SyncDir
+	}
+	return ""
+}
+
+// hookEnv builds the environment exposed to hook commands. ip may be empty when
+// not yet known.
+func hookEnv(cfg *config.ProjectConfig, ip string) []string {
+	env := []string{
+		"SERVERKU_PROJECT=" + cfg.Name,
+		"SERVERKU_PROVIDER=" + cfg.Provider,
+	}
+	if ip != "" {
+		env = append(env, "SERVERKU_IP="+ip)
+	}
+	return env
 }
 
 // ProviderFactory is a function that creates a CloudProvider for the given project config.
@@ -81,6 +124,12 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	// Step 2: Validate not already running
 	if state.IsRunning() {
 		return nil, fmt.Errorf("project %q is already running (status: %s, ip: %s)", projectName, state.Status, state.ExternalIP)
+	}
+
+	// Step 2.5: pre_up hook -- runs locally before any cloud resource is created,
+	// so e.g. a build can produce artifacts that are then synced to the VM.
+	if err := o.hooks.Run(ctx, "pre_up", cfg.Hooks.PreUp, hookWorkDir(cfg), hookEnv(cfg, "")); err != nil {
+		return nil, fmt.Errorf("pre_up hook failed: %w", err)
 	}
 
 	// Step 3: Ensure SSH keys
@@ -280,6 +329,12 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		// Non-fatal: don't fail the operation because of notifications
 	}
 
+	// Step 11: post_up hook -- runs after the project is up. Best-effort: a
+	// failure is logged but does not fail the operation (the VM is already up).
+	if err := o.hooks.Run(ctx, "post_up", cfg.Hooks.PostUp, hookWorkDir(cfg), hookEnv(cfg, ip)); err != nil {
+		log.Printf("[orchestrator] post_up hook failed (non-fatal): %v", err)
+	}
+
 	return result, nil
 }
 
@@ -293,6 +348,13 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 //  5. Update state (keep disk info, clear VM info)
 //  6. Send notification
 func (o *Orchestrator) Down(ctx context.Context, projectName string, factory ProviderFactory) error {
+	return o.down(ctx, projectName, factory, false)
+}
+
+// down is the implementation of Down. When suppressHooks is true the pre_down /
+// post_down hooks are skipped -- used when Destroy calls down internally so that
+// a `destroy` fires only its own hooks, not the `down` hooks.
+func (o *Orchestrator) down(ctx context.Context, projectName string, factory ProviderFactory, suppressHooks bool) error {
 	// Step 1: Load config and state
 	cfg, err := o.store.LoadProject(projectName)
 	if err != nil {
@@ -307,6 +369,13 @@ func (o *Orchestrator) Down(ctx context.Context, projectName string, factory Pro
 	// Step 2: Validate project is running
 	if !state.IsRunning() && state.VMName == "" {
 		return fmt.Errorf("project %q is not running (status: %s)", projectName, state.Status)
+	}
+
+	// Step 2.1: pre_down hook -- runs locally before teardown (e.g. back up data).
+	if !suppressHooks {
+		if err := o.hooks.Run(ctx, "pre_down", cfg.Hooks.PreDown, hookWorkDir(cfg), hookEnv(cfg, state.ExternalIP)); err != nil {
+			return fmt.Errorf("pre_down hook failed: %w", err)
+		}
 	}
 
 	// Create the cloud provider
@@ -386,6 +455,13 @@ func (o *Orchestrator) Down(ctx context.Context, projectName string, factory Pro
 	// Step 6: Send notification
 	if err := o.notifier.SendDown(ctx, projectName); err != nil {
 		log.Printf("[orchestrator] failed to send notification: %v", err)
+	}
+
+	// Step 7: post_down hook -- runs after teardown. Best-effort (VM is gone).
+	if !suppressHooks {
+		if err := o.hooks.Run(ctx, "post_down", cfg.Hooks.PostDown, hookWorkDir(cfg), hookEnv(cfg, "")); err != nil {
+			log.Printf("[orchestrator] post_down hook failed (non-fatal): %v", err)
+		}
 	}
 
 	return nil
@@ -475,10 +551,16 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 		return fmt.Errorf("failed to load state: %w", err)
 	}
 
-	// Step 1: If running, bring it down first
+	// Step 0: pre_destroy hook -- runs locally before anything is deleted.
+	if err := o.hooks.Run(ctx, "pre_destroy", cfg.Hooks.PreDestroy, hookWorkDir(cfg), hookEnv(cfg, state.ExternalIP)); err != nil {
+		return fmt.Errorf("pre_destroy hook failed: %w", err)
+	}
+
+	// Step 1: If running, bring it down first. Hooks are suppressed here so a
+	// destroy fires only pre_destroy/post_destroy, not the down hooks.
 	if state.IsRunning() || state.VMName != "" {
 		log.Printf("[orchestrator] project %q has a VM, tearing down first", projectName)
-		if err := o.Down(ctx, projectName, factory); err != nil {
+		if err := o.down(ctx, projectName, factory, true); err != nil {
 			return fmt.Errorf("failed to tear down before destroy: %w", err)
 		}
 		// Reload state after Down (it will have cleared VM info)
@@ -510,6 +592,11 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 	}
 
 	log.Printf("[orchestrator] project %q destroyed", projectName)
+
+	// Step 4: post_destroy hook -- best-effort local cleanup after destroy.
+	if err := o.hooks.Run(ctx, "post_destroy", cfg.Hooks.PostDestroy, hookWorkDir(cfg), hookEnv(cfg, "")); err != nil {
+		log.Printf("[orchestrator] post_destroy hook failed (non-fatal): %v", err)
+	}
 
 	return nil
 }

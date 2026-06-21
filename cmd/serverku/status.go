@@ -28,7 +28,7 @@ func newStatusCmd() *cobra.Command {
 
 			// Use orch.Status() so SPOT termination detection works -- it
 			// reconciles local state against the cloud provider.
-			orch := orchestrator.New(store, &provisioner.SSHProvisioner{}, nil)
+			orch := orchestrator.New(store, &provisioner.SSHProvisioner{}, nil, nil)
 			factory := newProviderFactory()
 
 			state, err := orch.Status(cmd.Context(), name, factory)

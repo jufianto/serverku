@@ -46,7 +46,12 @@ implementations; the orchestrator is provider-agnostic.
   lifecycle sequence and all state transitions. Takes a `ProviderFactory` so a
   provider is constructed per project from config. `Status` reconciles tracked
   state against the live provider — e.g. a SPOT VM terminated externally is rewritten
-  back to `stopped` with VM/IP fields cleared.
+  back to `stopped` with VM/IP fields cleared. Runs local lifecycle hooks via an
+  injected `HookRunner` (`pre_*` gate the operation; `post_*` are best-effort).
+  `Destroy` calls an internal `down(..., suppressHooks=true)` so it fires only its
+  own hooks, not the `down` hooks.
+- **`internal/hooks/`** — runs a project's local hook commands via `sh -c`
+  (local machine, not the VM — distinct from `startup_commands`).
 - **`internal/provider/`** — `CloudProvider` interface (`provider.go`) plus `gcp/`
   and `digitalocean/` implementations. **Both providers are implemented.** Add a new
   cloud by implementing the interface and adding a case in `newProviderFactory()`.

@@ -16,6 +16,7 @@ Cloud VMs are billed while they are running, even when nobody is using them. For
 - **Persistent storage**: Keep project data on block storage while compute is off.
 - **Docker Compose deployment**: Deploy existing Compose stacks without adopting a platform-specific format.
 - **Project sync**: Sync full project directories with `rsync`, including `.env`, configs, and build context.
+- **Local hooks**: Run local commands around the lifecycle (e.g. build assets before `up`, clean up after `down`).
 - **Automatic HTTPS routing**: Integrate with [`caddyku`](https://github.com/jufianto/caddyku) to route domains to Compose services with Caddy and Let's Encrypt.
 - **DNS automation**: Optionally create/update A records for your domains on `up` (DigitalOcean).
 - **Interactive setup**: Create project configs through a guided `serverku init` wizard.
@@ -281,6 +282,13 @@ sync_dir: ./myapp
 startup_commands:
   - "docker compose ps"
 
+hooks:                       # commands run on your LOCAL machine
+  pre_up:
+    - npm ci
+    - npm run build
+  post_down:
+    - ./scripts/cleanup-local.sh
+
 router:
   enabled: true
   domains:
@@ -308,6 +316,47 @@ notifications:
 | DigitalOcean | Implemented | `DIGITALOCEAN_TOKEN` |
 
 DigitalOcean does not support `spot: true` in the same way GCP supports preemptible instances. The DigitalOcean provider returns an error for Spot requests.
+
+## Local Hooks
+
+Hooks run shell commands **on your local machine** at lifecycle boundaries. This
+is different from `startup_commands`, which run **on the VM** after provisioning.
+The common case is building artifacts locally before they are synced to the VM:
+
+```yaml
+hooks:
+  pre_up:
+    - npm ci
+    - npm run build
+  post_down:
+    - ./scripts/cleanup-local.sh
+```
+
+Available hooks:
+
+| Hook | Runs |
+| --- | --- |
+| `pre_up` | locally, before `up` creates any cloud resource or syncs |
+| `post_up` | locally, after `up` succeeds |
+| `pre_down` | locally, before `down` tears the VM down |
+| `post_down` | locally, after `down` completes |
+| `pre_destroy` | locally, before `destroy` deletes anything |
+| `post_destroy` | locally, after `destroy` completes |
+
+Behavior:
+
+- **`pre_*` hooks gate the operation**: if one exits non-zero, the operation is
+  aborted and nothing is created/destroyed.
+- **`post_*` hooks are best-effort**: a failure is logged but does not fail the
+  command (the operation already succeeded).
+- `destroy` fires only `pre_destroy`/`post_destroy`, never the `down` hooks, even
+  though it tears the VM down internally.
+- Each command runs through `sh -c` (so pipes and `&&` work) from the project's
+  `sync_dir` (or the current directory if unset), inheriting your environment
+  plus `SERVERKU_PROJECT`, `SERVERKU_PROVIDER`, and `SERVERKU_IP` (when known).
+
+> **Security:** hooks execute arbitrary commands from the project config on your
+> machine. Only run configs you trust. Hooks require a Unix `sh`.
 
 ## Caddyku Routing
 
@@ -421,7 +470,6 @@ See `INTERNAL_README.md` for a deeper feature-by-feature verification matrix and
 - Real provider-backed pricing.
 - DNS automation for GCP (DigitalOcean is implemented).
 - Snapshot and backup management.
-- Local pre/post hooks.
 - More offline command/script tests.
 - Additional cloud providers later.
 

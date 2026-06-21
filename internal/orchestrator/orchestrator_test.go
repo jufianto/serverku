@@ -155,7 +155,7 @@ func testSetup(t *testing.T, storageCfg config.StorageConfig) (*Orchestrator, *m
 		return mock, nil
 	}
 
-	orch := New(store, nil, nil)
+	orch := New(store, nil, nil, nil)
 	return orch, mock, factory
 }
 
@@ -650,7 +650,7 @@ func testSetupWithProvisioner(t *testing.T, storageCfg config.StorageConfig, pro
 		return mock, nil
 	}
 
-	orch := New(store, prov, nil)
+	orch := New(store, prov, nil, nil)
 	return orch, mock, factory
 }
 

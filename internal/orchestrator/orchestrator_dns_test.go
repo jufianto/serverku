@@ -61,7 +61,7 @@ func dnsTestSetup(t *testing.T) *Orchestrator {
 		t.Fatal(err)
 	}
 
-	return New(store, nil, nil)
+	return New(store, nil, nil, nil)
 }
 
 func factoryFor(cp provider.CloudProvider) ProviderFactory {

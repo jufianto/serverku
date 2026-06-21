@@ -187,7 +187,7 @@ func (p *Provider) StopVM(ctx context.Context, name string) error {
 
 	// We need to parse the ID back to int
 	var id int
-	fmt.Sscanf(vm.ID, "%d", &id)
+	_, _ = fmt.Sscanf(vm.ID, "%d", &id)
 
 	action, _, err := p.client.DropletActions.PowerOff(ctx, id)
 	if err != nil {
@@ -207,7 +207,7 @@ func (p *Provider) StartVM(ctx context.Context, name string) error {
 	}
 
 	var id int
-	fmt.Sscanf(vm.ID, "%d", &id)
+	_, _ = fmt.Sscanf(vm.ID, "%d", &id)
 
 	action, _, err := p.client.DropletActions.PowerOn(ctx, id)
 	if err != nil {
@@ -230,7 +230,7 @@ func (p *Provider) DestroyVM(ctx context.Context, name string) error {
 	}
 
 	var id int
-	fmt.Sscanf(vm.ID, "%d", &id)
+	_, _ = fmt.Sscanf(vm.ID, "%d", &id)
 
 	_, err = p.client.Droplets.Delete(ctx, id)
 	if err != nil {
@@ -289,7 +289,7 @@ func (p *Provider) getDropletIDByName(ctx context.Context, name string) (int, er
 		return 0, err
 	}
 	var id int
-	fmt.Sscanf(vm.ID, "%d", &id)
+	_, _ = fmt.Sscanf(vm.ID, "%d", &id)
 	return id, nil
 }
 

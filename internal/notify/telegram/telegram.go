@@ -9,9 +9,14 @@ import (
 	"time"
 )
 
+// defaultBaseURL is the Telegram Bot API root. It is overridable per-instance
+// so tests can point the notifier at an httptest server.
+const defaultBaseURL = "https://api.telegram.org"
+
 type Notifier struct {
 	botToken string
 	chatID   string
+	baseURL  string
 	client   *http.Client
 }
 
@@ -20,6 +25,7 @@ func New(botToken, chatID string) *Notifier {
 	return &Notifier{
 		botToken: botToken,
 		chatID:   chatID,
+		baseURL:  defaultBaseURL,
 		client: &http.Client{
 			Timeout: 5 * time.Second, // 5s timeout to prevent blocking
 		},
@@ -47,7 +53,7 @@ func (n *Notifier) send(ctx context.Context, msg string) error {
 		return err
 	}
 
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", n.botToken)
+	url := fmt.Sprintf("%s/bot%s/sendMessage", n.baseURL, n.botToken)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(body))
 	if err != nil {
 		return err

@@ -68,7 +68,7 @@ func TestHelpListsCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--help failed: %v", err)
 	}
-	for _, want := range []string{"init", "up", "down", "status", "list"} {
+	for _, want := range []string{"init", "up", "down", "status", "list", "backup"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output missing command %q\n%s", want, out)
 		}
@@ -161,5 +161,22 @@ func TestListEmpty(t *testing.T) {
 	}
 	if !strings.Contains(out, "No projects found") {
 		t.Errorf("expected 'No projects found', got: %q", out)
+	}
+}
+
+func TestBackupWithoutStorageFails(t *testing.T) {
+	cfgDir := t.TempDir()
+
+	// initDO creates a --no-storage project; backup must fail before any cloud call.
+	if _, errOut, err := initDO(t, cfgDir, "demo"); err != nil {
+		t.Fatalf("init failed: %v\nstderr: %s", err, errOut)
+	}
+
+	_, errOut, err := runCLI(t, "--config-dir", cfgDir, "backup", "demo")
+	if err == nil {
+		t.Fatal("expected backup to fail for a project without persistent storage")
+	}
+	if !strings.Contains(errOut, "no persistent storage") {
+		t.Errorf("expected 'no persistent storage' error, got: %q", errOut)
 	}
 }

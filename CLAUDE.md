@@ -39,7 +39,7 @@ The dependency flow is: **CLI command (`cmd/serverku/`) → `Orchestrator` →
 implementations; the orchestrator is provider-agnostic.
 
 - **`cmd/serverku/`** — Cobra commands (`init`, `lifecycle` for up/down/destroy,
-  `status`, `logs`, `ssh`, `tunnel`). `lifecycle.go` holds `newProviderFactory()`,
+  `status`, `logs`, `ssh`, `tunnel`, `backup`). `lifecycle.go` holds `newProviderFactory()`,
   which selects the provider by `cfg.Provider` (`gcp` or `digitalocean`), and
   `buildNotifier()`, which assembles a multi-notifier from config.
 - **`internal/orchestrator/`** — `Up`/`Down`/`Status`/`Destroy`. Owns the full
@@ -58,8 +58,9 @@ implementations; the orchestrator is provider-agnostic.
   DigitalOcean rejects `spot: true` (no equivalent to GCP preemptible).
   `DNSManager` is an *optional* capability interface — providers that support DNS
   automation implement `EnsureARecord`; the orchestrator detects it via a type
-  assertion on the `CloudProvider`. Only DigitalOcean implements it so far; `up`
-  fails fast if `dns.enabled` on a provider that doesn't.
+  assertion on the `CloudProvider` and `up` fails fast if `dns.enabled` on a
+  provider that doesn't. Both GCP (Cloud DNS) and DigitalOcean implement it.
+  `SnapshotDisk` (part of `CloudProvider`) backs the `serverku backup` command.
 - **`internal/provisioner/`** — runs provisioning over SSH: installs Docker, mounts
   storage, syncs the project, embeds the Compose file into a remote script, optionally
   installs/inits Caddyku, then `docker compose up -d`. `scripts.go` builds the remote

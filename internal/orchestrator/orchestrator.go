@@ -601,6 +601,53 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 	return nil
 }
 
+// BackupResult contains the result of a successful Backup operation.
+type BackupResult struct {
+	SnapshotName string
+	SnapshotID   string
+	DiskName     string
+}
+
+// Backup creates a snapshot of the project's persistent disk. The disk does not
+// need to be attached; the project may be up or down. snapshotName is supplied
+// by the caller (the CLI stamps it with a timestamp) so the orchestrator stays
+// deterministic and testable.
+func (o *Orchestrator) Backup(ctx context.Context, projectName, snapshotName string, factory ProviderFactory) (*BackupResult, error) {
+	cfg, err := o.store.LoadProject(projectName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load project: %w", err)
+	}
+
+	state, err := o.store.LoadState(projectName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load state: %w", err)
+	}
+
+	if !cfg.Storage.Enabled {
+		return nil, fmt.Errorf("project %q has no persistent storage to back up", projectName)
+	}
+	if state.DiskName == "" {
+		return nil, fmt.Errorf("project %q has no disk yet; run `serverku up` first", projectName)
+	}
+
+	cp, err := factory(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cloud provider: %w", err)
+	}
+
+	log.Printf("[orchestrator] snapshotting disk %q as %q", state.DiskName, snapshotName)
+	snapshotID, err := cp.SnapshotDisk(ctx, state.DiskName, snapshotName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to snapshot disk: %w", err)
+	}
+
+	return &BackupResult{
+		SnapshotName: snapshotName,
+		SnapshotID:   snapshotID,
+		DiskName:     state.DiskName,
+	}, nil
+}
+
 // setErrorState updates the project state to error status and saves it.
 func (o *Orchestrator) setErrorState(state *config.ProjectState, errMsg string) {
 	state.Status = config.StatusError

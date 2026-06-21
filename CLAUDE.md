@@ -28,7 +28,7 @@ Test locally against a throwaway config dir to avoid touching `~/.serverku/`:
 ```bash
 tmpdir="$(mktemp -d)"
 ./serverku --config-dir "$tmpdir" init demo --non-interactive \
-  --provider digitalocean --region sgp1 --vm-size s-1vcpu-1gb --no-storage
+  --provider digitalocean --region sgp1 --size s-1vcpu-1gb --no-storage
 ./serverku --config-dir "$tmpdir" list
 ```
 

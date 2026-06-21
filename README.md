@@ -352,7 +352,7 @@ Use a temporary config directory while testing locally:
 
 ```bash
 tmpdir="$(mktemp -d)"
-./serverku --config-dir "$tmpdir" init demo --non-interactive --provider digitalocean --region sgp1 --vm-size s-1vcpu-1gb --no-storage
+./serverku --config-dir "$tmpdir" init demo --non-interactive --provider digitalocean --region sgp1 --size s-1vcpu-1gb --no-storage
 ./serverku --config-dir "$tmpdir" list
 ```
 

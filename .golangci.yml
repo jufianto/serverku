@@ -1,0 +1,28 @@
+# golangci-lint configuration. Run locally with `make lint`.
+# Install: https://golangci-lint.run/usage/install
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - errcheck      # unchecked errors
+    - govet         # suspicious constructs
+    - ineffassign   # unused assignments
+    - staticcheck   # broad correctness/simplification checks
+    - unused        # unused code
+    - gofmt         # formatting
+    - goimports     # import grouping/formatting
+    - misspell      # common spelling mistakes
+    - unconvert     # redundant type conversions
+
+issues:
+  exclude-rules:
+    # Reference-only legacy package, not built into the CLI.
+    - path: internal/legacy/
+      linters:
+        - errcheck
+        - staticcheck
+        - unused
+  max-issues-per-linter: 0
+  max-same-issues: 0

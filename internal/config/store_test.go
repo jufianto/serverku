@@ -112,7 +112,9 @@ func TestStore_DeleteProject(t *testing.T) {
 	s := newTestStore(t)
 
 	cfg := &ProjectConfig{Name: "to-delete", Provider: "gcp", Region: "us-central1", Zone: "us-central1-a", VM: VMConfig{Size: "e2-small"}}
-	s.SaveProject(cfg)
+	if err := s.SaveProject(cfg); err != nil {
+		t.Fatalf("SaveProject: %v", err)
+	}
 
 	if err := s.DeleteProject("to-delete"); err != nil {
 		t.Fatalf("DeleteProject failed: %v", err)
@@ -140,7 +142,9 @@ func TestStore_ProjectExists(t *testing.T) {
 	}
 
 	cfg := &ProjectConfig{Name: "exists", Provider: "gcp", Region: "us-central1", Zone: "us-central1-a", VM: VMConfig{Size: "e2-small"}}
-	s.SaveProject(cfg)
+	if err := s.SaveProject(cfg); err != nil {
+		t.Fatalf("SaveProject: %v", err)
+	}
 
 	if !s.ProjectExists("exists") {
 		t.Error("expected true for existing project")
@@ -162,7 +166,9 @@ func TestStore_ListProjects(t *testing.T) {
 	// Add some projects
 	for _, name := range []string{"alpha", "beta", "gamma"} {
 		cfg := &ProjectConfig{Name: name, Provider: "gcp", Region: "us-central1", Zone: "us-central1-a", VM: VMConfig{Size: "e2-small"}}
-		s.SaveProject(cfg)
+		if err := s.SaveProject(cfg); err != nil {
+			t.Fatalf("SaveProject(%s): %v", name, err)
+		}
 	}
 
 	names, err = s.ListProjects()
@@ -243,7 +249,9 @@ func TestStore_DeleteState(t *testing.T) {
 	s := newTestStore(t)
 
 	state := &ProjectState{ProjectName: "to-delete", Status: StatusStopped}
-	s.SaveState(state)
+	if err := s.SaveState(state); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
 
 	if err := s.DeleteState("to-delete"); err != nil {
 		t.Fatalf("DeleteState failed: %v", err)

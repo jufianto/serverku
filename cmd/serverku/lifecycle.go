@@ -127,7 +127,7 @@ Your data on the persistent disk is preserved for the next 'serverku up'.`,
 				fmt.Printf("This will destroy the VM for project %q. Data on persistent storage is preserved.\n", name)
 				fmt.Print("Continue? (y/n): ")
 				var confirm string
-				fmt.Scanln(&confirm)
+				_, _ = fmt.Scanln(&confirm)
 				if confirm != "y" && confirm != "yes" {
 					fmt.Println("Aborted.")
 					return nil
@@ -178,7 +178,7 @@ This action is irreversible - all data will be permanently lost.`,
 				fmt.Printf("This includes the VM, persistent storage, and all data.\n")
 				fmt.Printf("Type the project name to confirm: ")
 				var confirm string
-				fmt.Scanln(&confirm)
+				_, _ = fmt.Scanln(&confirm)
 				if confirm != name {
 					fmt.Println("Aborted. Name did not match.")
 					return nil

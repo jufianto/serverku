@@ -219,18 +219,6 @@ func runInteractiveInit(name string) error {
 	mountPath = "/data"
 	composeFile = "docker-compose.yml"
 
-	// Dynamically update defaults based on provider selection
-	go func() {
-		for {
-			if provider == "digitalocean" {
-				// Don't overwrite if user typed something else, but here we just
-				// set it initially. Since huh doesn't easily support dynamic *values* mid-form
-				// cleanly without complex state management, we rely on the descriptions
-				// to guide the user if they want to change them.
-			}
-		}
-	}() // Just an idea, but let's stick to simple sequential groups
-
 	err := form.Run()
 	if err != nil {
 		return err
@@ -248,7 +236,7 @@ func runInteractiveInit(name string) error {
 
 	sizeGB := 20
 	if storageEnabled {
-		fmt.Sscanf(storageGB, "%d", &sizeGB)
+		_, _ = fmt.Sscanf(storageGB, "%d", &sizeGB)
 	}
 
 	cfg := &config.ProjectConfig{

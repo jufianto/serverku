@@ -17,6 +17,7 @@ Cloud VMs are billed while they are running, even when nobody is using them. For
 - **Docker Compose deployment**: Deploy existing Compose stacks without adopting a platform-specific format.
 - **Project sync**: Sync full project directories with `rsync`, including `.env`, configs, and build context.
 - **Automatic HTTPS routing**: Integrate with [`caddyku`](https://github.com/jufianto/caddyku) to route domains to Compose services with Caddy and Let's Encrypt.
+- **DNS automation**: Optionally create/update A records for your domains on `up` (DigitalOcean).
 - **Interactive setup**: Create project configs through a guided `serverku init` wizard.
 - **GCP and DigitalOcean providers**: Provision Compute Engine instances or DigitalOcean Droplets.
 - **SSH utilities**: Open shells, stream Compose logs, and create secure port tunnels through managed SSH keys.
@@ -287,6 +288,10 @@ router:
       service: web
       upstream: web:3000
 
+dns:
+  enabled: true   # auto-manage A records for router.domains on `up`
+  ttl: 3600       # record TTL in seconds (default 3600)
+
 notifications:
   slack:
     webhook_url: "https://hooks.slack.com/services/..."
@@ -316,7 +321,40 @@ When `router.enabled` is true, provisioning will:
 - Run `caddyku init-app` for each configured domain.
 - Start the Compose application.
 
-You still need to point your DNS record to the VM external IP. DNS automation is planned but not implemented yet.
+Point your DNS records at the VM external IP, or enable DNS automation (see below) to have `serverku` do it for you.
+
+## DNS Automation
+
+When `dns.enabled` is true, `serverku up` creates or updates an A record for each
+`router.domains` entry, pointing it at the VM's external IP. This happens before
+provisioning so Caddyku/Let's Encrypt can resolve the domain when issuing
+certificates.
+
+```yaml
+router:
+  enabled: true
+  domains:
+    - domain: myapp.example.com
+      service: web
+      upstream: web:3000
+dns:
+  enabled: true
+  ttl: 3600
+```
+
+Notes:
+
+- **DigitalOcean only** for now. The domain's nameservers must already be
+  delegated to DigitalOcean (the apex zone must exist in your DO account);
+  `serverku` matches each FQDN to the longest managed zone and writes the
+  record. GCP DNS automation is planned — enabling `dns` on a GCP project fails
+  fast with a clear error rather than silently skipping.
+- Record changes are idempotent: a record already pointing at the IP is left
+  unchanged.
+- A DNS write failure aborts `up` and tears down the VM (persistent storage is
+  preserved).
+- Freshly created records may take time to propagate; Caddy retries certificate
+  issuance, but a low `ttl` helps during initial setup.
 
 ## Cost Estimates
 
@@ -381,7 +419,7 @@ See `INTERNAL_README.md` for a deeper feature-by-feature verification matrix and
 ## Roadmap
 
 - Real provider-backed pricing.
-- DNS automation for configured domains.
+- DNS automation for GCP (DigitalOcean is implemented).
 - Snapshot and backup management.
 - Local pre/post hooks.
 - More offline command/script tests.

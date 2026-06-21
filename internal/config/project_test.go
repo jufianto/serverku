@@ -143,6 +143,43 @@ func TestProjectConfig_Validate_StorageEnabled_MissingFields(t *testing.T) {
 	}
 }
 
+func TestProjectConfig_Validate_DNSRequiresDomains(t *testing.T) {
+	cfg := validGCPConfig("test")
+	cfg.DNS = DNSConfig{Enabled: true}
+
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for dns enabled without router.domains")
+	}
+
+	// With a domain it should validate.
+	cfg.Router = RouterConfig{
+		Enabled: true,
+		Domains: []DomainConfig{{Domain: "app.example.com", Service: "web", Upstream: "web:3000"}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("expected valid config with dns + domain, got: %v", err)
+	}
+}
+
+func TestProjectConfig_SetDefaults_DNSTTL(t *testing.T) {
+	cfg := validGCPConfig("test")
+	cfg.DNS = DNSConfig{Enabled: true}
+
+	cfg.SetDefaults()
+
+	if cfg.DNS.TTL != 3600 {
+		t.Errorf("expected default DNS TTL 3600, got %d", cfg.DNS.TTL)
+	}
+
+	// An explicit TTL is preserved.
+	cfg2 := validGCPConfig("test")
+	cfg2.DNS = DNSConfig{Enabled: true, TTL: 60}
+	cfg2.SetDefaults()
+	if cfg2.DNS.TTL != 60 {
+		t.Errorf("expected explicit DNS TTL 60 to be preserved, got %d", cfg2.DNS.TTL)
+	}
+}
+
 func TestProjectConfig_SetDefaults(t *testing.T) {
 	cfg := validGCPConfig("test")
 	cfg.VM.Image = ""

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jufianto/serverku/internal/provider"
 	"google.golang.org/api/compute/v1"
+	dns "google.golang.org/api/dns/v1"
 )
 
 const (
@@ -28,9 +29,10 @@ const (
 
 // GCPProvider implements provider.CloudProvider for Google Cloud Platform.
 type GCPProvider struct {
-	service   *compute.Service
-	projectID string
-	zone      string
+	service    *compute.Service
+	dnsService *dns.Service
+	projectID  string
+	zone       string
 }
 
 // New creates a new GCPProvider using Application Default Credentials.
@@ -41,10 +43,16 @@ func New(ctx context.Context, projectID string, zone string) (*GCPProvider, erro
 		return nil, fmt.Errorf("failed to create GCP compute service: %w", err)
 	}
 
+	dnsSvc, err := dns.NewService(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP DNS service: %w", err)
+	}
+
 	return &GCPProvider{
-		service:   svc,
-		projectID: projectID,
-		zone:      zone,
+		service:    svc,
+		dnsService: dnsSvc,
+		projectID:  projectID,
+		zone:       zone,
 	}, nil
 }
 
@@ -54,6 +62,17 @@ func NewWithService(svc *compute.Service, projectID string, zone string) *GCPPro
 		service:   svc,
 		projectID: projectID,
 		zone:      zone,
+	}
+}
+
+// NewWithServices creates a GCPProvider with injected compute and DNS services
+// (for testing DNS-related operations).
+func NewWithServices(svc *compute.Service, dnsSvc *dns.Service, projectID string, zone string) *GCPProvider {
+	return &GCPProvider{
+		service:    svc,
+		dnsService: dnsSvc,
+		projectID:  projectID,
+		zone:       zone,
 	}
 }
 

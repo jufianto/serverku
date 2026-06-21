@@ -208,6 +208,27 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		return nil, fmt.Errorf("failed to save state after getting IP: %w", err)
 	}
 
+	// Step 8.5: DNS automation. Done before provisioning so Caddyku/Let's Encrypt
+	// can resolve the domains when acquiring certificates.
+	if cfg.DNS.Enabled {
+		dnsMgr, ok := cp.(provider.DNSManager)
+		if !ok {
+			o.setErrorState(state, fmt.Sprintf("dns automation is not yet supported for the %q provider", cfg.Provider))
+			log.Printf("[orchestrator] DNS enabled but unsupported for provider %q, destroying VM (disk preserved)", cfg.Provider)
+			_ = cp.DestroyVM(ctx, vm.Name)
+			return nil, fmt.Errorf("dns automation is not yet supported for the %q provider", cfg.Provider)
+		}
+		for _, d := range cfg.Router.Domains {
+			log.Printf("[orchestrator] ensuring DNS A record %s -> %s", d.Domain, ip)
+			if err := dnsMgr.EnsureARecord(ctx, d.Domain, ip, cfg.DNS.TTL); err != nil {
+				o.setErrorState(state, fmt.Sprintf("failed to set DNS record for %s: %v", d.Domain, err))
+				log.Printf("[orchestrator] DNS update failed, destroying VM (disk preserved): %v", err)
+				_ = cp.DestroyVM(ctx, vm.Name)
+				return nil, fmt.Errorf("failed to set DNS record for %s: %w", d.Domain, err)
+			}
+		}
+	}
+
 	// Step 9: Provision the VM (install Docker, mount disk, deploy compose)
 	log.Printf("[orchestrator] provisioning VM %q at %s...", vm.Name, ip)
 

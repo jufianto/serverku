@@ -30,8 +30,19 @@ type ProjectConfig struct {
 	// Router holds automatic HTTPS routing and reverse proxy configuration via caddyku.
 	Router RouterConfig `yaml:"router,omitempty"`
 
+	// DNS holds automatic DNS record management settings.
+	DNS DNSConfig `yaml:"dns,omitempty"`
+
 	// Notifications holds optional notification settings.
 	Notifications NotificationsConfig `yaml:"notifications,omitempty"`
+}
+
+// DNSConfig holds automatic DNS record management settings. When enabled,
+// serverku creates/updates an A record for each domain in router.domains
+// pointing at the VM's external IP on `up`.
+type DNSConfig struct {
+	Enabled bool `yaml:"enabled"`
+	TTL     int  `yaml:"ttl,omitempty"` // record TTL in seconds, defaults to 3600
 }
 
 // NotificationsConfig holds notification settings.
@@ -128,6 +139,10 @@ func (c *ProjectConfig) Validate() error {
 		}
 	}
 
+	if c.DNS.Enabled && len(c.Router.Domains) == 0 {
+		errs = append(errs, "dns.enabled requires at least one router.domains entry")
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid project config:\n  - %s", strings.Join(errs, "\n  - "))
 	}
@@ -145,6 +160,9 @@ func (c *ProjectConfig) SetDefaults() {
 	}
 	if c.Storage.Enabled && c.Storage.SizeGB == 0 {
 		c.Storage.SizeGB = 20
+	}
+	if c.DNS.Enabled && c.DNS.TTL == 0 {
+		c.DNS.TTL = 3600
 	}
 }
 

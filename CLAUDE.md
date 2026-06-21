@@ -51,6 +51,10 @@ implementations; the orchestrator is provider-agnostic.
   and `digitalocean/` implementations. **Both providers are implemented.** Add a new
   cloud by implementing the interface and adding a case in `newProviderFactory()`.
   DigitalOcean rejects `spot: true` (no equivalent to GCP preemptible).
+  `DNSManager` is an *optional* capability interface — providers that support DNS
+  automation implement `EnsureARecord`; the orchestrator detects it via a type
+  assertion on the `CloudProvider`. Only DigitalOcean implements it so far; `up`
+  fails fast if `dns.enabled` on a provider that doesn't.
 - **`internal/provisioner/`** — runs provisioning over SSH: installs Docker, mounts
   storage, syncs the project, embeds the Compose file into a remote script, optionally
   installs/inits Caddyku, then `docker compose up -d`. `scripts.go` builds the remote

@@ -41,6 +41,16 @@ type CloudProvider interface {
 	DetachDisk(ctx context.Context, vmID string, diskID string) error
 }
 
+// DNSManager is an optional capability implemented by cloud providers that can
+// also manage DNS A records for the project's domains. The orchestrator detects
+// support via a type assertion on the CloudProvider; providers without DNS
+// automation simply do not implement it.
+type DNSManager interface {
+	// EnsureARecord creates or updates an A record for fqdn pointing at ip.
+	// It is idempotent: an existing record with the same data is left unchanged.
+	EnsureARecord(ctx context.Context, fqdn, ip string, ttl int) error
+}
+
 // VMConfig holds provider-agnostic configuration for creating a VM.
 type VMConfig struct {
 	Name          string   // VM instance name

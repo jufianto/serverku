@@ -13,10 +13,10 @@ jobs:
     name: Build & Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.23'
           cache: true
@@ -43,14 +43,17 @@ jobs:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.23'
           cache: true
 
+      # Pinned to v6, which is the last release supporting golangci-lint v1.
+      # It still runs on Node 20; bumping to v7 requires migrating to
+      # golangci-lint v2 (config rewrite). Tracked as a follow-up.
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:

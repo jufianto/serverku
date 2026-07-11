@@ -55,6 +55,22 @@ type DNSManager interface {
 	EnsureARecord(ctx context.Context, fqdn, ip string, ttl int) error
 }
 
+// FirewallManager is an optional capability implemented by cloud providers
+// whose networks block inbound traffic unless a firewall rule explicitly
+// allows it (e.g. GCP's default network). The orchestrator detects support
+// via a type assertion on the CloudProvider; providers whose VMs are open by
+// default (e.g. DigitalOcean) simply do not implement it.
+type FirewallManager interface {
+	// EnsureFirewall creates the project's firewall rule if it does not
+	// already exist. The rule targets the project's network tags, so it is
+	// created once and survives VM re-creation across down/up cycles.
+	EnsureFirewall(ctx context.Context, projectName string) error
+
+	// DeleteFirewall removes the project's firewall rule. Deleting a rule
+	// that does not exist is not an error.
+	DeleteFirewall(ctx context.Context, projectName string) error
+}
+
 // VMConfig holds provider-agnostic configuration for creating a VM.
 type VMConfig struct {
 	Name          string   // VM instance name

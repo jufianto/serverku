@@ -815,3 +815,156 @@ func TestDownCallsTeardown(t *testing.T) {
 		t.Errorf("Teardown opts.SSHUser = %q, want %q", opts.SSHUser, "serverku")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// firewallMockProvider adds the optional FirewallManager capability on top of
+// mockProvider, mirroring how the GCP provider layers it onto CloudProvider.
+// ---------------------------------------------------------------------------
+
+type firewallMockProvider struct {
+	*mockProvider
+	ensureFirewallFunc func(ctx context.Context, projectName string) error
+	deleteFirewallFunc func(ctx context.Context, projectName string) error
+}
+
+func (m *firewallMockProvider) EnsureFirewall(ctx context.Context, projectName string) error {
+	m.calls = append(m.calls, "EnsureFirewall")
+	if m.ensureFirewallFunc != nil {
+		return m.ensureFirewallFunc(ctx, projectName)
+	}
+	return nil
+}
+
+func (m *firewallMockProvider) DeleteFirewall(ctx context.Context, projectName string) error {
+	m.calls = append(m.calls, "DeleteFirewall")
+	if m.deleteFirewallFunc != nil {
+		return m.deleteFirewallFunc(ctx, projectName)
+	}
+	return nil
+}
+
+func firewallTestSetup(t *testing.T, storageCfg config.StorageConfig) (*Orchestrator, *firewallMockProvider, ProviderFactory) {
+	t.Helper()
+	orch, mock, _ := testSetup(t, storageCfg)
+	fwMock := &firewallMockProvider{mockProvider: mock}
+	factory := func(ctx context.Context, cfg *config.ProjectConfig) (provider.CloudProvider, error) {
+		return fwMock, nil
+	}
+	return orch, fwMock, factory
+}
+
+func indexOfCall(calls []string, name string) int {
+	for i, c := range calls {
+		if c == name {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestUpEnsuresFirewallBeforeVM(t *testing.T) {
+	orch, mock, factory := firewallTestSetup(t, config.StorageConfig{Enabled: false})
+
+	ctx := context.Background()
+	if _, err := orch.Up(ctx, "test-project", factory); err != nil {
+		t.Fatalf("Up() error: %v", err)
+	}
+
+	fwIdx := indexOfCall(mock.calls, "EnsureFirewall")
+	vmIdx := indexOfCall(mock.calls, "CreateVM")
+	if fwIdx == -1 {
+		t.Fatalf("EnsureFirewall was not called; calls: %v", mock.calls)
+	}
+	if vmIdx == -1 {
+		t.Fatalf("CreateVM was not called; calls: %v", mock.calls)
+	}
+	if fwIdx > vmIdx {
+		t.Errorf("EnsureFirewall (index %d) should run before CreateVM (index %d); calls: %v", fwIdx, vmIdx, mock.calls)
+	}
+}
+
+func TestUpFirewallFailureAborts(t *testing.T) {
+	orch, mock, factory := firewallTestSetup(t, config.StorageConfig{Enabled: false})
+	mock.ensureFirewallFunc = func(ctx context.Context, projectName string) error {
+		return fmt.Errorf("permission denied")
+	}
+
+	ctx := context.Background()
+	if _, err := orch.Up(ctx, "test-project", factory); err == nil {
+		t.Fatal("Up() should fail when EnsureFirewall fails")
+	}
+
+	if idx := indexOfCall(mock.calls, "CreateVM"); idx != -1 {
+		t.Errorf("CreateVM should not be called after firewall failure; calls: %v", mock.calls)
+	}
+
+	state, err := orch.store.LoadState("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != config.StatusError {
+		t.Errorf("state.Status = %q, want %q", state.Status, config.StatusError)
+	}
+}
+
+func TestUpWithoutFirewallCapability(t *testing.T) {
+	// Providers that do not implement FirewallManager (e.g. DigitalOcean) must
+	// work exactly as before.
+	orch, mock, factory := testSetup(t, config.StorageConfig{Enabled: false})
+
+	ctx := context.Background()
+	if _, err := orch.Up(ctx, "test-project", factory); err != nil {
+		t.Fatalf("Up() error: %v", err)
+	}
+	if idx := indexOfCall(mock.calls, "EnsureFirewall"); idx != -1 {
+		t.Errorf("EnsureFirewall should not appear for a provider without the capability; calls: %v", mock.calls)
+	}
+}
+
+func TestDestroyDeletesFirewall(t *testing.T) {
+	orch, mock, factory := firewallTestSetup(t, config.StorageConfig{
+		Enabled:   true,
+		SizeGB:    20,
+		MountPath: "/data",
+	})
+
+	state := config.NewState("test-project", "gcp", "us-central1", "us-central1-a")
+	state.Status = config.StatusStopped
+	state.DiskID = "disk-456"
+	state.DiskName = "serverku-test-project-data"
+	if err := orch.store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	if err := orch.Destroy(ctx, "test-project", factory); err != nil {
+		t.Fatalf("Destroy() error: %v", err)
+	}
+
+	diskIdx := indexOfCall(mock.calls, "DeleteDisk")
+	fwIdx := indexOfCall(mock.calls, "DeleteFirewall")
+	if diskIdx == -1 || fwIdx == -1 {
+		t.Fatalf("expected DeleteDisk and DeleteFirewall; calls: %v", mock.calls)
+	}
+}
+
+func TestDestroyFirewallFailureIsNonFatal(t *testing.T) {
+	orch, mock, factory := firewallTestSetup(t, config.StorageConfig{Enabled: false})
+	mock.deleteFirewallFunc = func(ctx context.Context, projectName string) error {
+		return fmt.Errorf("api unavailable")
+	}
+
+	state := config.NewState("test-project", "gcp", "us-central1", "us-central1-a")
+	state.Status = config.StatusStopped
+	if err := orch.store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	if err := orch.Destroy(ctx, "test-project", factory); err != nil {
+		t.Fatalf("Destroy() should succeed despite firewall cleanup failure, got: %v", err)
+	}
+	if orch.store.ProjectExists("test-project") {
+		t.Error("project config should be deleted even when firewall cleanup fails")
+	}
+}

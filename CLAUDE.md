@@ -60,7 +60,11 @@ implementations; the orchestrator is provider-agnostic.
   automation implement `EnsureARecord`; the orchestrator detects it via a type
   assertion on the `CloudProvider` and `up` fails fast if `dns.enabled` on a
   provider that doesn't. Both GCP (Cloud DNS) and DigitalOcean implement it.
-  `SnapshotDisk` (part of `CloudProvider`) backs the `serverku backup` command.
+  `FirewallManager` is another optional capability (same type-assertion pattern):
+  `up` ensures the project's firewall rule before creating the VM and `destroy`
+  removes it best-effort. Only GCP implements it (DigitalOcean droplets are open
+  by default). `SnapshotDisk` (part of `CloudProvider`) backs the `serverku
+  backup` command.
 - **`internal/provisioner/`** — runs provisioning over SSH: installs Docker, mounts
   storage, syncs the project, embeds the Compose file into a remote script, optionally
   installs/inits Caddyku, then `docker compose up -d`. `scripts.go` builds the remote

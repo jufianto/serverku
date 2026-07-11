@@ -16,9 +16,39 @@ type Provisioner interface {
 	// on a freshly created VM.
 	Provision(ctx context.Context, opts ProvisionOpts) error
 
+	// Deploy pushes the current project to an already-provisioned, running
+	// VM: re-syncs the project directory, rewrites the compose file, and
+	// runs `docker compose up -d`. Docker, storage, and routing from the
+	// original Provision are reused untouched.
+	Deploy(ctx context.Context, opts DeployOpts) error
+
 	// Teardown stops running containers and unmounts storage before the VM
 	// is destroyed.
 	Teardown(ctx context.Context, opts TeardownOpts) error
+}
+
+// DeployOpts holds the parameters for redeploying a project to a running VM.
+type DeployOpts struct {
+	// Host is the external IP address of the VM.
+	Host string
+
+	// PrivateKeyPath is the path to the SSH private key file.
+	PrivateKeyPath string
+
+	// SSHUser is the username to connect with.
+	SSHUser string
+
+	// StorageEnabled + MountPath determine the compose directory, exactly as
+	// during Provision (project lives on the persistent disk when enabled).
+	StorageEnabled bool
+	MountPath      string
+
+	// ComposeContent is the pre-read content of the docker-compose.yml file.
+	// Empty string means the compose file is left as-is on the VM.
+	ComposeContent string
+
+	// SyncDir is the local directory to re-sync to the VM (empty skips sync).
+	SyncDir string
 }
 
 // ProvisionOpts holds the parameters needed to provision a VM.
@@ -132,6 +162,7 @@ type TeardownOpts struct {
 type NoopProvisioner struct{}
 
 func (n *NoopProvisioner) Provision(_ context.Context, _ ProvisionOpts) error { return nil }
+func (n *NoopProvisioner) Deploy(_ context.Context, _ DeployOpts) error       { return nil }
 func (n *NoopProvisioner) Teardown(_ context.Context, _ TeardownOpts) error   { return nil }
 
 // SSHProvisioner is the concrete SSH-based implementation of Provisioner.
@@ -176,32 +207,9 @@ func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) erro
 	}
 
 	if opts.SyncDir != "" {
-		log.Printf("[provisioner] syncing directory %s to %s...", opts.SyncDir, composeDir)
-
-		rsyncBin, err := exec.LookPath("rsync")
-		if err != nil {
-			return fmt.Errorf("rsync not found in PATH. Please install rsync for directory synchronization: %w", err)
+		if err := rsyncDir(ctx, opts.SyncDir, opts.PrivateKeyPath, opts.SSHUser, opts.Host, composeDir); err != nil {
+			return err
 		}
-
-		sshOpts := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR", opts.PrivateKeyPath)
-		dest := fmt.Sprintf("%s@%s:%s/", opts.SSHUser, opts.Host, composeDir)
-
-		rsyncCmd := exec.CommandContext(ctx, rsyncBin,
-			"-avz",
-			"-e", sshOpts,
-			"--exclude=.git",
-			"--exclude=node_modules",
-			"--exclude=vendor",
-			opts.SyncDir+"/", // Trailing slash to copy contents
-			dest,
-		)
-
-		out, err := rsyncCmd.CombinedOutput()
-		if err != nil {
-			log.Printf("[provisioner] rsync output:\n%s", out)
-			return fmt.Errorf("failed to sync directory: %w", err)
-		}
-		log.Printf("[provisioner] directory synced successfully")
 	}
 
 	if opts.ComposeContent != "" {
@@ -299,5 +307,79 @@ func (p *SSHProvisioner) Teardown(ctx context.Context, opts TeardownOpts) error 
 	}
 
 	log.Printf("[provisioner] teardown complete")
+	return nil
+}
+
+// rsyncDir pushes a local directory to destDir on the VM over rsync/SSH,
+// excluding common build/VCS noise. Used by both Provision and Deploy.
+func rsyncDir(ctx context.Context, syncDir, privateKeyPath, sshUser, host, destDir string) error {
+	log.Printf("[provisioner] syncing directory %s to %s...", syncDir, destDir)
+
+	rsyncBin, err := exec.LookPath("rsync")
+	if err != nil {
+		return fmt.Errorf("rsync not found in PATH. Please install rsync for directory synchronization: %w", err)
+	}
+
+	sshOpts := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR", privateKeyPath)
+	dest := fmt.Sprintf("%s@%s:%s/", sshUser, host, destDir)
+
+	rsyncCmd := exec.CommandContext(ctx, rsyncBin,
+		"-avz",
+		"-e", sshOpts,
+		"--exclude=.git",
+		"--exclude=node_modules",
+		"--exclude=vendor",
+		syncDir+"/", // Trailing slash to copy contents
+		dest,
+	)
+
+	out, err := rsyncCmd.CombinedOutput()
+	if err != nil {
+		log.Printf("[provisioner] rsync output:\n%s", out)
+		return fmt.Errorf("failed to sync directory: %w", err)
+	}
+	log.Printf("[provisioner] directory synced successfully")
+	return nil
+}
+
+// Deploy pushes the current project state to an already-running VM: re-sync
+// the project directory, rewrite the compose file, and `docker compose up -d`
+// so changed services are recreated. Docker, the mounted disk, and Caddyku
+// routing from the original Provision are reused untouched.
+func (p *SSHProvisioner) Deploy(ctx context.Context, opts DeployOpts) error {
+	log.Printf("[provisioner] deploy: connecting to %s as %s...", opts.Host, opts.SSHUser)
+
+	client, err := connectSSHWithRetry(ctx, opts.Host, opts.PrivateKeyPath, opts.SSHUser)
+	if err != nil {
+		return fmt.Errorf("failed to connect to VM via SSH: %w", err)
+	}
+	defer client.Close()
+
+	composeDir := "/home/" + opts.SSHUser
+	if opts.StorageEnabled && opts.MountPath != "" {
+		composeDir = opts.MountPath
+	}
+
+	if opts.SyncDir != "" {
+		if err := rsyncDir(ctx, opts.SyncDir, opts.PrivateKeyPath, opts.SSHUser, opts.Host, composeDir); err != nil {
+			return err
+		}
+	}
+
+	if opts.ComposeContent != "" {
+		log.Printf("[provisioner] deploy: writing docker-compose.yml to %s...", composeDir)
+		if out, err := runCommand(client, writeComposeScript(opts.ComposeContent, composeDir)); err != nil {
+			log.Printf("[provisioner] write compose output:\n%s", out)
+			return fmt.Errorf("failed to write compose file: %w", err)
+		}
+	}
+
+	log.Printf("[provisioner] deploy: running docker compose up -d...")
+	if out, err := runCommand(client, composeUpScript(composeDir)); err != nil {
+		log.Printf("[provisioner] docker compose up output:\n%s", out)
+		return fmt.Errorf("failed to restart containers: %w", err)
+	}
+
+	log.Printf("[provisioner] deploy complete")
 	return nil
 }

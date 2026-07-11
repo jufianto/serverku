@@ -595,10 +595,20 @@ func TestDestroyStoppedWithDisk(t *testing.T) {
 
 type mockProvisioner struct {
 	provisionFunc func(ctx context.Context, opts provisioner.ProvisionOpts) error
+	deployFunc    func(ctx context.Context, opts provisioner.DeployOpts) error
 	teardownFunc  func(ctx context.Context, opts provisioner.TeardownOpts) error
 
 	provisionCalls []provisioner.ProvisionOpts
+	deployCalls    []provisioner.DeployOpts
 	teardownCalls  []provisioner.TeardownOpts
+}
+
+func (m *mockProvisioner) Deploy(ctx context.Context, opts provisioner.DeployOpts) error {
+	m.deployCalls = append(m.deployCalls, opts)
+	if m.deployFunc != nil {
+		return m.deployFunc(ctx, opts)
+	}
+	return nil
 }
 
 func (m *mockProvisioner) Provision(ctx context.Context, opts provisioner.ProvisionOpts) error {
@@ -1017,5 +1027,106 @@ func TestUpNoHeartbeatWithoutConfig(t *testing.T) {
 	}
 	if hb := mp.provisionCalls[0].Heartbeat; hb.Hours != 0 {
 		t.Errorf("heartbeat should be disabled without config, got %+v", hb)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Deploy
+// ---------------------------------------------------------------------------
+
+// deployTestSetup returns an orchestrator whose project is in a given running
+// state, with a mock provisioner to capture Deploy calls.
+func deployTestSetup(t *testing.T, running bool) (*Orchestrator, *mockProvisioner) {
+	t.Helper()
+	mp := &mockProvisioner{}
+	orch, _, _ := testSetupWithProvisioner(t, config.StorageConfig{
+		Enabled:   true,
+		SizeGB:    20,
+		MountPath: "/data",
+	}, mp)
+
+	// Deploy reads the SSH key path; make sure the key exists.
+	if _, _, err := orch.store.EnsureSSHKeys(); err != nil {
+		t.Fatal(err)
+	}
+
+	state := config.NewState("test-project", "gcp", "us-central1", "us-central1-a")
+	if running {
+		state.Status = config.StatusRunning
+		state.VMName = "serverku-test-project"
+		state.ExternalIP = "1.2.3.4"
+	} else {
+		state.Status = config.StatusStopped
+	}
+	if err := orch.store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+	return orch, mp
+}
+
+func TestDeploy(t *testing.T) {
+	orch, mp := deployTestSetup(t, true)
+
+	// Give the project a sync dir so DeployOpts carries it.
+	cfg, err := orch.store.LoadProject("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.SyncDir = "/tmp/some-project"
+	if err := orch.store.SaveProject(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := orch.Deploy(context.Background(), "test-project"); err != nil {
+		t.Fatalf("Deploy() error: %v", err)
+	}
+
+	if len(mp.deployCalls) != 1 {
+		t.Fatalf("Deploy() called %d times, want 1", len(mp.deployCalls))
+	}
+	opts := mp.deployCalls[0]
+	if opts.Host != "1.2.3.4" {
+		t.Errorf("opts.Host = %q, want 1.2.3.4", opts.Host)
+	}
+	if opts.SSHUser != "serverku" {
+		t.Errorf("opts.SSHUser = %q, want serverku", opts.SSHUser)
+	}
+	if !opts.StorageEnabled || opts.MountPath != "/data" {
+		t.Errorf("storage opts not carried: %+v", opts)
+	}
+	if opts.SyncDir != "/tmp/some-project" {
+		t.Errorf("opts.SyncDir = %q", opts.SyncDir)
+	}
+}
+
+func TestDeployNotRunning(t *testing.T) {
+	orch, mp := deployTestSetup(t, false)
+
+	err := orch.Deploy(context.Background(), "test-project")
+	if err == nil {
+		t.Fatal("Deploy() should fail when the project is not running")
+	}
+	if len(mp.deployCalls) != 0 {
+		t.Errorf("provisioner.Deploy should not be called; got %d calls", len(mp.deployCalls))
+	}
+}
+
+func TestDeployFailureLeavesStateRunning(t *testing.T) {
+	orch, mp := deployTestSetup(t, true)
+	mp.deployFunc = func(_ context.Context, _ provisioner.DeployOpts) error {
+		return fmt.Errorf("rsync exploded")
+	}
+
+	if err := orch.Deploy(context.Background(), "test-project"); err == nil {
+		t.Fatal("Deploy() should propagate provisioner failure")
+	}
+
+	// A failed deploy must not touch the running VM or its state.
+	state, err := orch.store.LoadState("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != config.StatusRunning || state.ExternalIP != "1.2.3.4" {
+		t.Errorf("state must stay running after failed deploy, got %s/%s", state.Status, state.ExternalIP)
 	}
 }

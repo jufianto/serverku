@@ -112,6 +112,38 @@ the external IP shown on completion.`,
 	}
 }
 
+func newDeployCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "deploy <project-name>",
+		Short: "Push code changes to a running VM without recreating it",
+		Long: `Re-sync the project directory, rewrite the compose file, and run
+docker compose up -d on the already-running VM. Same IP, no DNS churn,
+seconds instead of minutes. The project must be running (see: serverku up).`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+
+			cfg, err := store.LoadProject(name)
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("Deploying project %q...\n", name)
+
+			notifier := buildNotifier(cfg)
+			orch := orchestrator.New(store, &provisioner.SSHProvisioner{}, notifier, nil)
+
+			if err := orch.Deploy(cmd.Context(), name); err != nil {
+				return err
+			}
+
+			fmt.Printf("Project %q deployed.\n", name)
+			fmt.Printf("Logs: serverku logs %s\n", name)
+			return nil
+		},
+	}
+}
+
 func newDownCmd() *cobra.Command {
 	var force bool
 

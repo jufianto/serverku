@@ -352,6 +352,71 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	return result, nil
 }
 
+// Deploy pushes the current project state (synced files + compose file) to a
+// running VM without recreating it: same IP, no DNS churn, seconds of
+// container restart instead of minutes of VM boot. The project must be
+// running; use Up first.
+func (o *Orchestrator) Deploy(ctx context.Context, projectName string) error {
+	cfg, err := o.store.LoadProject(projectName)
+	if err != nil {
+		return fmt.Errorf("failed to load project: %w", err)
+	}
+
+	state, err := o.store.LoadState(projectName)
+	if err != nil {
+		return fmt.Errorf("failed to load state: %w", err)
+	}
+
+	if !state.IsRunning() || state.ExternalIP == "" {
+		return fmt.Errorf("project %q is not running (status: %s); run `serverku up %s` first", projectName, state.Status, projectName)
+	}
+
+	// pre_deploy hook -- e.g. build assets locally before they are synced.
+	// Gates the deploy: a non-zero exit aborts before anything reaches the VM.
+	if err := o.hooks.Run(ctx, "pre_deploy", cfg.Hooks.PreDeploy, hookWorkDir(cfg), hookEnv(cfg, state.ExternalIP)); err != nil {
+		return fmt.Errorf("pre_deploy hook failed: %w", err)
+	}
+
+	privKeyPath, err := o.store.GetSSHPrivateKeyPath()
+	if err != nil {
+		return fmt.Errorf("failed to get SSH key: %w", err)
+	}
+
+	var composeContent string
+	if cfg.ComposeFile != "" {
+		data, err := os.ReadFile(cfg.ComposeFile)
+		if err != nil {
+			return fmt.Errorf("compose file %q not found: %w", cfg.ComposeFile, err)
+		}
+		composeContent = string(data)
+	}
+
+	log.Printf("[orchestrator] deploying project %q to %s", projectName, state.ExternalIP)
+	err = o.provisioner.Deploy(ctx, provisioner.DeployOpts{
+		Host:           state.ExternalIP,
+		PrivateKeyPath: privKeyPath,
+		SSHUser:        "serverku",
+		StorageEnabled: cfg.Storage.Enabled,
+		MountPath:      cfg.Storage.MountPath,
+		ComposeContent: composeContent,
+		SyncDir:        cfg.SyncDir,
+	})
+	if err != nil {
+		// The VM stays up: a failed deploy must not destroy a running
+		// service, and the previous containers may well still be serving.
+		return fmt.Errorf("deploy failed (VM left running): %w", err)
+	}
+
+	log.Printf("[orchestrator] project %q deployed", projectName)
+
+	// post_deploy hook -- best-effort (the deploy already succeeded).
+	if err := o.hooks.Run(ctx, "post_deploy", cfg.Hooks.PostDeploy, hookWorkDir(cfg), hookEnv(cfg, state.ExternalIP)); err != nil {
+		log.Printf("[orchestrator] post_deploy hook failed (non-fatal): %v", err)
+	}
+
+	return nil
+}
+
 // Down tears down the VM for a project but preserves persistent storage.
 //
 // The operation flow:

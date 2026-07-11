@@ -57,6 +57,8 @@ type DNSConfig struct {
 type HooksConfig struct {
 	PreUp       []string `yaml:"pre_up,omitempty"`
 	PostUp      []string `yaml:"post_up,omitempty"`
+	PreDeploy   []string `yaml:"pre_deploy,omitempty"`
+	PostDeploy  []string `yaml:"post_deploy,omitempty"`
 	PreDown     []string `yaml:"pre_down,omitempty"`
 	PostDown    []string `yaml:"post_down,omitempty"`
 	PreDestroy  []string `yaml:"pre_destroy,omitempty"`

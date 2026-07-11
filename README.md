@@ -237,7 +237,7 @@ What happens:
 - Runs `docker compose up -d`.
 - Prints the VM IP and hourly cost (live provider price when available).
 
-### 5. Operate the app
+### 5. Operate and iterate
 
 ```bash
 serverku status myapp
@@ -246,6 +246,16 @@ serverku logs myapp
 serverku ssh myapp
 serverku tunnel myapp 5432:5432
 ```
+
+Changed your code? Push it to the running VM without recreating anything:
+
+```bash
+serverku deploy myapp
+```
+
+Same VM, same IP, no DNS churn — just re-sync + `docker compose up -d`,
+so only changed services restart. (`up` is for creating the VM; `deploy`
+is for iterating on it.)
 
 ### 6. Turn compute off
 
@@ -269,6 +279,7 @@ This removes cloud resources and local project state/config. Treat it as irrever
 | --- | --- |
 | `serverku init <project>` | Create a project config and SSH keys. |
 | `serverku up <project>` | Create VM, attach storage, provision, sync, and deploy. |
+| `serverku deploy <project>` | Push code changes to the running VM: re-sync, rewrite compose, `compose up -d`. Same IP, seconds not minutes. |
 | `serverku down <project>` | Destroy VM while preserving persistent storage. Use `-f/--force` to skip the confirmation prompt. |
 | `serverku destroy <project>` | Delete VM, storage, state, and config. Use `-f/--force` to skip the confirmation prompt. |
 | `serverku status <project>` | Show project status and reconcile with provider. |
@@ -377,6 +388,8 @@ Available hooks:
 | --- | --- |
 | `pre_up` | locally, before `up` creates any cloud resource or syncs |
 | `post_up` | locally, after `up` succeeds |
+| `pre_deploy` | locally, before `deploy` syncs anything (e.g. build assets) |
+| `post_deploy` | locally, after `deploy` succeeds |
 | `pre_down` | locally, before `down` tears the VM down |
 | `post_down` | locally, after `down` completes |
 | `pre_destroy` | locally, before `destroy` deletes anything |

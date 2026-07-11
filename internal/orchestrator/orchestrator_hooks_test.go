@@ -185,3 +185,61 @@ func idxOfStr(s []string, v string) int {
 func containsStr(s []string, v string) bool {
 	return idxOfStr(s, v) >= 0
 }
+
+func TestDeploy_HooksGateAndFollow(t *testing.T) {
+	runner := newFakeHookRunner()
+	orch, _, _ := hookTestSetup(t, runner, config.HooksConfig{
+		PreDeploy:  []string{"npm run build"},
+		PostDeploy: []string{"echo deployed"},
+	})
+
+	if _, _, err := orch.store.EnsureSSHKeys(); err != nil {
+		t.Fatal(err)
+	}
+	state := config.NewState("hook-project", "digitalocean", "sgp1", "")
+	state.Status = config.StatusRunning
+	state.VMName = "serverku-hook-project"
+	state.ExternalIP = "1.2.3.4"
+	if err := orch.store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := orch.Deploy(context.Background(), "hook-project"); err != nil {
+		t.Fatalf("Deploy: %v", err)
+	}
+
+	if idxOfStr(runner.phases, "pre_deploy") != 0 {
+		t.Errorf("expected pre_deploy first, phases: %v", runner.phases)
+	}
+	if !containsStr(runner.phases, "post_deploy") {
+		t.Errorf("expected post_deploy to run, phases: %v", runner.phases)
+	}
+}
+
+func TestDeploy_PreDeployFailureAborts(t *testing.T) {
+	runner := newFakeHookRunner()
+	runner.failOn = "pre_deploy"
+	mp := &mockProvisioner{}
+	orchBase, _, _ := hookTestSetup(t, runner, config.HooksConfig{
+		PreDeploy: []string{"exit 1"},
+	})
+	// Swap in a recording provisioner to prove nothing reached the VM.
+	orch := New(orchBase.store, mp, nil, runner)
+
+	if _, _, err := orch.store.EnsureSSHKeys(); err != nil {
+		t.Fatal(err)
+	}
+	state := config.NewState("hook-project", "digitalocean", "sgp1", "")
+	state.Status = config.StatusRunning
+	state.ExternalIP = "1.2.3.4"
+	if err := orch.store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := orch.Deploy(context.Background(), "hook-project"); err == nil {
+		t.Fatal("Deploy should fail when pre_deploy fails")
+	}
+	if len(mp.deployCalls) != 0 {
+		t.Errorf("nothing should reach the VM after pre_deploy failure; got %d calls", len(mp.deployCalls))
+	}
+}

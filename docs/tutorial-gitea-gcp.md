@@ -46,19 +46,23 @@ services:
     restart: unless-stopped
     environment:
       GITEA__database__DB_TYPE: sqlite3
-      GITEA__server__SSH_PORT: "2222"
+      GITEA__server__SSH_PORT: "9022"
     volumes:
       - ./gitea:/data
     ports:
-      - "3000:3000"   # web UI
-      - "2222:22"     # git-over-ssh
+      - "8080:3000"   # web UI
+      - "9022:22"     # git-over-ssh
 EOF
 ```
 
 Familiar patterns from Tutorial 2: a relative bind mount (`./gitea`) so
 repositories live on the persistent disk, SQLite to keep the stack to one
-container. Git SSH is published on host port `2222` because `22` belongs
-to the VM's own sshd (which serverku itself uses).
+container. Two port choices worth explaining:
+
+- Git SSH is published on `9022` (not `22`, which belongs to the VM's own
+  sshd that serverku itself uses).
+- The web UI is published on `8080` and SSH on `9022` because those fall
+  inside the firewall rule serverku creates on GCP (see Step 3).
 
 ## Step 2 — Init for GCP
 
@@ -98,24 +102,22 @@ compose_file: ~/deploys/gitea/docker-compose.yml
 sync_dir: ~/deploys/gitea
 ```
 
-## Step 3 — Open the firewall (one-time, manual for now)
+## Step 3 — Know your open ports
 
-> ⚠️ **Current limitation.** serverku tags GCP VMs (`serverku`,
-> `serverku-<project>`) but does not yet create a firewall rule for them.
-> On the default network only SSH (22) is reachable — ports 3000/2222
-> would time out. Create the rule once yourself; it survives every
-> `down`/`up` cycle because it targets the tag, not the instance:
+GCP's default network blocks inbound traffic, so on `up` serverku creates a
+firewall rule (`serverku-gitea-fw`) targeting the VM's network tag. It
+allows:
 
-```bash
-gcloud compute firewall-rules create serverku-gitea-fw \
-  --network=default \
-  --target-tags=serverku-gitea \
-  --allow=tcp:3000,tcp:2222 \
-  --source-ranges=0.0.0.0/0
+```text
+tcp: 22, 80, 443, 8080, 9000-9999   (plus icmp)
 ```
 
-(If you later put Gitea behind Caddyku with a domain, allow `tcp:80,tcp:443`
-instead and drop 3000.)
+The rule is created once and survives every `down`/`up` cycle (it targets
+the tag, not the instance); `destroy` removes it. Our Compose file
+publishes on `8080` and `9022` precisely because they're in this set — if
+your own app needs a port outside it, either remap the host port into
+`9000-9999` or add a rule manually with
+`gcloud compute firewall-rules create`.
 
 ## Step 4 — Up
 
@@ -123,15 +125,16 @@ instead and drop 3000.)
 serverku up gitea
 ```
 
-Same pipeline as DigitalOcean — instance, disk attach + mount, Docker,
-rsync to `/data`, compose up — just with Compute Engine vocabulary in the
-logs. Grab the IP from the output and open **http://\<ip\>:3000**.
+Same pipeline as DigitalOcean — firewall rule, instance, disk attach +
+mount, Docker, rsync to `/data`, compose up — just with Compute Engine
+vocabulary in the logs. Grab the IP from the output and open
+**http://\<ip\>:8080**.
 
 Gitea's installer is pre-filled from our environment variables; click
 through, create the admin user, make a repo, and push to it:
 
 ```bash
-git remote add gitea ssh://git@<ip>:2222/you/yourrepo.git
+git remote add gitea ssh://git@<ip>:9022/you/yourrepo.git
 git push gitea main
 ```
 
@@ -181,20 +184,16 @@ console and rebuild.
 
 ```bash
 serverku down gitea      # instance gone, disk + firewall rule stay (~$0.40/mo)
-serverku destroy gitea   # instance + disk + local config gone; snapshots remain
+serverku destroy gitea   # instance + disk + firewall rule + local config gone
 ```
 
-If you destroy for good, remove the manual firewall rule too:
-
-```bash
-gcloud compute firewall-rules delete serverku-gitea-fw
-```
+Snapshots are the only thing `destroy` leaves behind.
 
 ## What you learned
 
 - GCP needs three extra things: ADC auth, `project_id`, and a `zone`.
-- One manual firewall rule (tag-targeted, created once) — until serverku
-  automates it.
+- serverku manages the GCP firewall rule for you — just publish your app
+  on the allowed ports (`80`, `443`, `8080`, `9000-9999`).
 - `spot: true` + persistent disk + `status` reconciliation = very cheap,
   slightly interruptible infrastructure.
 - Snapshots are cheap insurance that outlive even `destroy`.

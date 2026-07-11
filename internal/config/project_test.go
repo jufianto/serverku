@@ -129,6 +129,20 @@ func TestProjectConfig_Validate_DONoZoneNeeded(t *testing.T) {
 	}
 }
 
+func TestProjectConfig_Validate_DORejectsSpot(t *testing.T) {
+	cfg := &ProjectConfig{
+		Name:     "test",
+		Provider: "digitalocean",
+		Region:   "sgp1",
+		VM:       VMConfig{Size: "s-1vcpu-1gb", Spot: true},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for digitalocean with spot enabled")
+	}
+}
+
 func TestProjectConfig_Validate_StorageEnabled_MissingFields(t *testing.T) {
 	cfg := validGCPConfig("test")
 	cfg.Storage = StorageConfig{

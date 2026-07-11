@@ -146,6 +146,10 @@ func (c *ProjectConfig) Validate() error {
 		errs = append(errs, "vm.size is required")
 	}
 
+	if c.Provider == "digitalocean" && c.VM.Spot {
+		errs = append(errs, "vm.spot is not supported on digitalocean (GCP only)")
+	}
+
 	if c.Storage.Enabled {
 		if c.Storage.SizeGB <= 0 {
 			errs = append(errs, "storage.size_gb must be > 0 when storage is enabled")

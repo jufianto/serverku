@@ -71,6 +71,23 @@ type FirewallManager interface {
 	DeleteFirewall(ctx context.Context, projectName string) error
 }
 
+// PriceCatalog is an optional capability implemented by cloud providers that
+// can report real VM pricing from the cloud's own pricing API. Callers fall
+// back to the offline pricing tables (clearly labeled as estimates) when the
+// provider does not implement it or the lookup fails.
+type PriceCatalog interface {
+	// VMHourlyRateUSD returns the current hourly price for a machine size in
+	// a region, honoring spot pricing when spot is true.
+	VMHourlyRateUSD(ctx context.Context, size, region string, spot bool) (float64, error)
+}
+
+// UsageReporter is an optional capability implemented by cloud providers that
+// can report real account-level month-to-date usage.
+type UsageReporter interface {
+	// MonthToDateUsageUSD returns the account's month-to-date usage in USD.
+	MonthToDateUsageUSD(ctx context.Context) (float64, error)
+}
+
 // VMConfig holds provider-agnostic configuration for creating a VM.
 type VMConfig struct {
 	Name          string   // VM instance name

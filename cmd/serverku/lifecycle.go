@@ -94,7 +94,8 @@ the external IP shown on completion.`,
 			if result.DiskName != "" {
 				fmt.Printf("  Disk:        %s (id: %s)\n", result.DiskName, result.DiskID)
 			}
-			for _, line := range pricing.FormatUpEstimate(pricing.EstimateCost(cfg)) {
+			rate := newRateCache(factory).resolveRate(cmd.Context(), cfg)
+			for _, line := range pricing.FormatUpEstimate(pricing.EstimateCost(cfg), rate) {
 				fmt.Println(line)
 			}
 			fmt.Println()

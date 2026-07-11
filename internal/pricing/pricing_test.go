@@ -1,7 +1,9 @@
 package pricing
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jufianto/serverku/internal/config"
 )
@@ -69,5 +71,51 @@ func TestEstimateCostUnknownSizeAndDisabledStorage(t *testing.T) {
 	}
 	if est.ApproximationWarning == "" {
 		t.Fatal("expected warning for unknown VM price")
+	}
+}
+
+func TestTableRate(t *testing.T) {
+	cfg := &config.ProjectConfig{Provider: "digitalocean", VM: config.VMConfig{Size: "s-1vcpu-1gb"}}
+	r := TableRate(cfg)
+	if !r.Known || r.Live {
+		t.Errorf("expected known non-live table rate, got %+v", r)
+	}
+	if r.HourlyUSD != 0.00893 {
+		t.Errorf("HourlyUSD = %v, want 0.00893", r.HourlyUSD)
+	}
+
+	unknown := TableRate(&config.ProjectConfig{Provider: "digitalocean", VM: config.VMConfig{Size: "nope"}})
+	if unknown.Known {
+		t.Errorf("expected unknown rate for unlisted size, got %+v", unknown)
+	}
+}
+
+func TestAccruedUSD(t *testing.T) {
+	start := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
+	now := start.Add(10 * time.Hour)
+	if got := AccruedUSD(start, now, 0.05); got != 0.5 {
+		t.Errorf("AccruedUSD = %v, want 0.5", got)
+	}
+	// A clock that goes backwards must not produce a negative cost.
+	if got := AccruedUSD(now, start, 0.05); got != 0 {
+		t.Errorf("AccruedUSD backwards = %v, want 0", got)
+	}
+}
+
+func TestFormatAccruedMarksEstimates(t *testing.T) {
+	start := time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
+	now := start.Add(2 * time.Hour)
+
+	est := FormatAccrued(Rate{HourlyUSD: 0.05, Known: true}, start, now)
+	if !strings.Contains(est, "est.") || !strings.Contains(est, "~") {
+		t.Errorf("table-rate output must carry est. marker: %q", est)
+	}
+
+	live := FormatAccrued(Rate{HourlyUSD: 0.05, Known: true, Live: true}, start, now)
+	if strings.Contains(live, "est.") || strings.Contains(live, "~") {
+		t.Errorf("live-rate output must not carry est. marker: %q", live)
+	}
+	if !strings.Contains(live, "$0.10") {
+		t.Errorf("expected accrued $0.10 in %q", live)
 	}
 }

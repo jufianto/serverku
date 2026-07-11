@@ -23,6 +23,7 @@ block-storage disk that survives `down` and is only deleted by `destroy`.
 | [1. Uptime Kuma in 10 minutes](tutorial-uptime-kuma-digitalocean.md) | Uptime Kuma (JS/Node) | DigitalOcean | The minimal flow: one container, no domain, no disk. Your first `up`/`destroy`. |
 | [2. WordPress with HTTPS and persistent data](tutorial-wordpress-digitalocean.md) | WordPress + MySQL (PHP) | DigitalOcean | The full production flow: persistent storage, Caddyku HTTPS, DNS automation, the `down`/`up` money-saving cycle. |
 | [3. Gitea on GCP spot instances](tutorial-gitea-gcp.md) | Gitea (Go) | GCP | GCP auth and config, cheap spot/preemptible VMs, disk snapshots with `serverku backup`. |
+| [4. Notifications: never pay for a forgotten VM](tutorial-notifications.md) | — | any | ntfy push with zero accounts, the auto-configuring Telegram wizard, and the on-VM still-running heartbeat. |
 
 New to serverku? Do them in order — each one builds on concepts from the last.
 

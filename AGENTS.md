@@ -7,7 +7,6 @@
 
 ## Current Reality
 - Both GCP and DigitalOcean providers are implemented. `newProviderFactory()` in `cmd/serverku/lifecycle.go` selects by `cfg.Provider` (`gcp`, `digitalocean`). DigitalOcean rejects `spot: true` (no preemptible equivalent).
-- `internal/legacy/` is reference-only (original Telegram + Firestore implementation) and not used by the CLI.
 - `up` provisions over SSH via `internal/provisioner/`: installs Docker, mounts storage, syncs the project with `rsync`, embeds the Compose file into a remote script, optionally installs/inits Caddyku, then runs `docker compose up -d`.
 - `status` reconciles tracked state against the provider. If a SPOT VM was terminated externally, local state is rewritten back to `stopped` and VM/IP fields are cleared.
 

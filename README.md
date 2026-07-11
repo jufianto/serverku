@@ -606,7 +606,7 @@ go test ./...
 
 Local tests cover config, orchestration logic, pricing estimates, notification composition, provider behavior (via fake API endpoints), and end-to-end CLI flows. CI runs build, tests, and golangci-lint on every push and pull request.
 
-See `INTERNAL_README.md` for a deeper feature-by-feature verification matrix and offline testing plan.
+See [`docs/development.md`](docs/development.md) for the contributor guide and offline verification notes.
 
 ## Safety Notes
 

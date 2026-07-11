@@ -65,6 +65,15 @@ go install github.com/jufianto/serverku/cmd/serverku@latest
 - A Docker Compose project to deploy.
 - Optional: a domain pointing at the VM IP when using Caddyku routing.
 
+## Tutorials
+
+Prefer learning by doing? [`docs/`](docs/README.md) has blog-style
+walkthroughs deploying real open-source apps, from beginner to advanced:
+
+1. [Uptime Kuma (JS) on DigitalOcean in 10 minutes](docs/tutorial-uptime-kuma-digitalocean.md) — the minimal first deploy.
+2. [WordPress (PHP) with HTTPS, DNS automation, and persistent data](docs/tutorial-wordpress-digitalocean.md) — the full production flow.
+3. [Gitea (Go) on GCP spot instances with snapshots](docs/tutorial-gitea-gcp.md) — cheap interruptible compute done right.
+
 ## Quick Start
 
 Create a project config:

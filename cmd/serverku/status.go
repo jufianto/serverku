@@ -36,7 +36,14 @@ func newStatusCmd() *cobra.Command {
 				return err
 			}
 
-			printProjectStatus(cfg, state)
+			rates := newRateCache(factory)
+			printProjectStatus(cfg, state, rates.resolveRate(cmd.Context(), cfg))
+
+			// Real account-level month-to-date usage, when the provider's API
+			// reports it (currently DigitalOcean).
+			if usd, ok := rates.monthToDateUsage(cmd.Context(), cfg); ok {
+				fmt.Printf("\nAccount month-to-date (%s): $%.2f\n", cfg.Provider, usd)
+			}
 			return nil
 		},
 	}
@@ -58,9 +65,11 @@ func newListCmd() *cobra.Command {
 				return nil
 			}
 
+			rates := newRateCache(newProviderFactory())
+
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tPROVIDER\tSTATUS\tIP\tSTORAGE\tEST. COST")
-			fmt.Fprintln(w, "----\t--------\t------\t--\t-------\t---------")
+			fmt.Fprintln(w, "NAME\tPROVIDER\tSTATUS\tIP\tSTORAGE\tCOST")
+			fmt.Fprintln(w, "----\t--------\t------\t--\t-------\t----")
 
 			for _, name := range names {
 				cfg, err := store.LoadProject(name)
@@ -85,9 +94,18 @@ func newListCmd() *cobra.Command {
 					storage = fmt.Sprintf("%dGB", cfg.Storage.SizeGB)
 				}
 
-				estimate := pricing.FormatListEstimate(pricing.EstimateCost(cfg), state.IsRunning())
+				// Running projects show accrued session cost at the best
+				// available rate (live API price, or table estimate marked
+				// est.); stopped projects show the storage-only estimate.
+				cost := pricing.FormatListEstimate(pricing.EstimateCost(cfg), state.IsRunning())
+				if state.IsRunning() && state.StartedAt != nil {
+					rate := rates.resolveRate(cmd.Context(), cfg)
+					if rate.Known {
+						cost = pricing.FormatAccrued(rate, *state.StartedAt, time.Now())
+					}
+				}
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-					name, cfg.Provider, state.Status, ip, storage, estimate)
+					name, cfg.Provider, state.Status, ip, storage, cost)
 			}
 
 			return w.Flush()
@@ -95,7 +113,7 @@ func newListCmd() *cobra.Command {
 	}
 }
 
-func printProjectStatus(cfg *config.ProjectConfig, state *config.ProjectState) {
+func printProjectStatus(cfg *config.ProjectConfig, state *config.ProjectState, rate pricing.Rate) {
 	fmt.Printf("Project:   %s\n", cfg.Name)
 	fmt.Printf("Provider:  %s\n", cfg.Provider)
 	fmt.Printf("Region:    %s\n", cfg.Region)
@@ -126,6 +144,12 @@ func printProjectStatus(cfg *config.ProjectConfig, state *config.ProjectState) {
 		uptime := time.Since(*state.StartedAt).Truncate(time.Second)
 		fmt.Printf("Uptime:    %s\n", uptime)
 		fmt.Printf("Started:   %s\n", state.StartedAt.Format(time.RFC3339))
+		if state.IsRunning() {
+			// Accrued compute cost for this session: uptime x hourly rate.
+			// Live rates come from the provider's pricing API; table rates
+			// are marked est. so an estimate is never mistaken for a bill.
+			fmt.Printf("Session:   %s\n", pricing.FormatAccrued(rate, *state.StartedAt, time.Now()))
+		}
 	}
 	if state.ErrorMsg != "" {
 		fmt.Printf("Error:     %s\n", state.ErrorMsg)

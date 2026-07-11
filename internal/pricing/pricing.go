@@ -2,6 +2,7 @@ package pricing
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/jufianto/serverku/internal/config"
 )
@@ -29,6 +30,58 @@ var vmHourlyUSD = map[string]map[string]float64{
 var storageMonthlyPerGBUSD = map[string]float64{
 	"digitalocean": 0.10,
 	"gcp":          0.04,
+}
+
+// Rate is an hourly VM price with provenance. Cost figures shown to the user
+// must be honest about their source: a Live rate came from the provider's own
+// pricing API and is displayed as-is; a table rate is an offline estimate and
+// is always displayed with an est. marker.
+type Rate struct {
+	HourlyUSD float64
+	Live      bool // true when fetched from the provider's pricing API
+	Known     bool // false when neither the API nor the table knows this size
+}
+
+// TableRate returns the offline table rate for a project's VM size.
+func TableRate(cfg *config.ProjectConfig) Rate {
+	providerVMPrices, ok := vmHourlyUSD[cfg.Provider]
+	if !ok {
+		return Rate{}
+	}
+	hourly, known := providerVMPrices[cfg.VM.Size]
+	return Rate{HourlyUSD: hourly, Known: known}
+}
+
+// AccruedUSD returns the compute cost accrued since startedAt at the given rate.
+func AccruedUSD(startedAt, now time.Time, hourlyUSD float64) float64 {
+	hours := now.Sub(startedAt).Hours()
+	if hours < 0 {
+		return 0
+	}
+	return hours * hourlyUSD
+}
+
+// FormatRate renders an hourly rate with its provenance marker.
+func FormatRate(r Rate) string {
+	if !r.Known {
+		return "rate unknown"
+	}
+	if r.Live {
+		return fmt.Sprintf("$%.4f/hr", r.HourlyUSD)
+	}
+	return fmt.Sprintf("~$%.4f/hr est.", r.HourlyUSD)
+}
+
+// FormatAccrued renders the accrued session cost with its provenance marker.
+func FormatAccrued(r Rate, startedAt, now time.Time) string {
+	if !r.Known {
+		return "unknown (no rate for this size)"
+	}
+	accrued := AccruedUSD(startedAt, now, r.HourlyUSD)
+	if r.Live {
+		return fmt.Sprintf("$%.2f (%s)", accrued, FormatRate(r))
+	}
+	return fmt.Sprintf("~$%.2f est. (%s)", accrued, FormatRate(r))
 }
 
 // Estimate contains approximate infrastructure pricing for a project config.
@@ -83,12 +136,23 @@ func FormatListEstimate(est Estimate, running bool) string {
 	return fmt.Sprintf("~$%.2f/mo storage", est.DiskMonthlyUSD)
 }
 
-// FormatUpEstimate returns detailed estimate lines for successful up output.
-func FormatUpEstimate(est Estimate) []string {
+// FormatUpEstimate returns detailed cost lines for successful up output. When
+// rate is a live provider price it replaces the table's VM estimate and is
+// shown without the est. marker.
+func FormatUpEstimate(est Estimate, rate Rate) []string {
+	if rate.Live && rate.Known {
+		est.VMHourlyUSD = rate.HourlyUSD
+		est.VMPriceKnown = true
+		est.MonthlyIfRunningUSD = rate.HourlyUSD*hoursPerMonth + est.DiskMonthlyUSD
+	}
+
 	lines := []string{}
-	if est.VMPriceKnown {
+	switch {
+	case rate.Live && rate.Known:
+		lines = append(lines, fmt.Sprintf("  VM cost:           $%.4f/hour (live price)", est.VMHourlyUSD))
+	case est.VMPriceKnown:
 		lines = append(lines, fmt.Sprintf("  Est. VM cost:      ~$%.3f/hour", est.VMHourlyUSD))
-	} else {
+	default:
 		lines = append(lines, "  Est. VM cost:      unavailable for this size")
 	}
 

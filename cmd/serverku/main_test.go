@@ -139,6 +139,38 @@ func TestInitInvalidProviderFails(t *testing.T) {
 	}
 }
 
+func TestInitDODefaultsSpotOff(t *testing.T) {
+	cfgDir := t.TempDir()
+
+	// Without an explicit --spot, DigitalOcean init must not inherit the
+	// GCP-oriented spot default (DO has no spot equivalent and would fail at up).
+	if _, errOut, err := initDO(t, cfgDir, "demo"); err != nil {
+		t.Fatalf("init failed: %v\nstderr: %s", err, errOut)
+	}
+
+	data, err := os.ReadFile(filepath.Join(cfgDir, "projects", "demo.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "spot: true") {
+		t.Errorf("DO config should not have spot: true:\n%s", data)
+	}
+}
+
+func TestInitDOExplicitSpotFails(t *testing.T) {
+	cfgDir := t.TempDir()
+
+	_, errOut, err := runCLI(t, "--config-dir", cfgDir, "init", "demo",
+		"--non-interactive", "--provider", "digitalocean",
+		"--region", "sgp1", "--size", "s-1vcpu-1gb", "--no-storage", "--spot")
+	if err == nil {
+		t.Fatal("expected explicit --spot on digitalocean to fail, got success")
+	}
+	if !strings.Contains(errOut, "spot is not supported on digitalocean") {
+		t.Errorf("expected spot-unsupported error, got: %q", errOut)
+	}
+}
+
 func TestInitGCPRequiresProjectIDAndZone(t *testing.T) {
 	cfgDir := t.TempDir()
 

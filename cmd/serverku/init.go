@@ -49,6 +49,14 @@ interactive prompts.`,
 				return runInteractiveInit(name)
 			}
 
+			// The --spot default (true) only makes sense for GCP; DigitalOcean
+			// has no spot equivalent. Unless the user explicitly asked for
+			// spot, default it off for DigitalOcean instead of writing a
+			// config that fails at `up`.
+			if provider == "digitalocean" && !cmd.Flags().Changed("spot") {
+				spot = false
+			}
+
 			// Non-interactive mode with flags
 			cfg := &config.ProjectConfig{
 				Name:      name,
@@ -94,7 +102,7 @@ interactive prompts.`,
 	cmd.Flags().StringVarP(&region, "region", "r", "", "cloud region")
 	cmd.Flags().StringVarP(&zone, "zone", "z", "", "cloud zone (required for GCP)")
 	cmd.Flags().StringVarP(&vmSize, "size", "s", "e2-medium", "VM machine type")
-	cmd.Flags().BoolVar(&spot, "spot", true, "use SPOT/preemptible instances")
+	cmd.Flags().BoolVar(&spot, "spot", true, "use SPOT/preemptible instances (GCP only; defaults to false for digitalocean)")
 	cmd.Flags().BoolVar(&noStorage, "no-storage", false, "create a fully stateless project (no persistent disk)")
 	cmd.Flags().IntVar(&storageGB, "storage-gb", 20, "persistent disk size in GB")
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "skip interactive prompts")
@@ -172,10 +180,12 @@ func runInteractiveInit(name string) error {
 					}
 					return "e.g., e2-medium"
 				}, &provider),
+		),
+		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Use SPOT / Preemptible instances?").
 				Value(&spot),
-		),
+		).WithHideFunc(func() bool { return provider != "gcp" }),
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Enable persistent storage?").
@@ -232,6 +242,9 @@ func runInteractiveInit(name string) error {
 		if vmSize == defaultSize {
 			vmSize = "s-1vcpu-1gb"
 		}
+		// The spot question is hidden for DigitalOcean (no spot equivalent),
+		// but its default value is true -- reset it so the config validates.
+		spot = false
 	}
 
 	sizeGB := 20

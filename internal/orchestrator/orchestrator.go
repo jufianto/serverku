@@ -192,6 +192,18 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		log.Printf("[orchestrator] reusing existing disk %q", state.DiskName)
 	}
 
+	// Step 4.5: Ensure firewall rules exist for providers that need them (e.g.
+	// GCP's default network blocks inbound traffic). Done before the VM exists
+	// so there is nothing to clean up on failure; the rule targets the
+	// project's network tags, so it survives down/up cycles.
+	if fw, ok := cp.(provider.FirewallManager); ok {
+		log.Printf("[orchestrator] ensuring firewall rules for project %q", projectName)
+		if err := fw.EnsureFirewall(ctx, projectName); err != nil {
+			o.setErrorState(state, fmt.Sprintf("failed to ensure firewall: %v", err))
+			return nil, fmt.Errorf("failed to ensure firewall: %w", err)
+		}
+	}
+
 	// Step 5: Create VM
 	vmName := fmt.Sprintf("serverku-%s", projectName)
 	log.Printf("[orchestrator] creating VM %q", vmName)
@@ -570,16 +582,30 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 		}
 	}
 
-	// Step 2: Delete disk if it exists
-	if state.DiskName != "" {
-		cp, err := factory(ctx, cfg)
-		if err != nil {
-			return fmt.Errorf("failed to create cloud provider: %w", err)
+	// Step 2: Delete cloud-side leftovers (disk, firewall rules). The provider
+	// is needed for both; failing to construct it is only fatal when a disk
+	// still has to be deleted.
+	cp, cpErr := factory(ctx, cfg)
+	if cpErr != nil {
+		if state.DiskName != "" {
+			return fmt.Errorf("failed to create cloud provider: %w", cpErr)
+		}
+		log.Printf("[orchestrator] warning: could not create provider for firewall cleanup: %v", cpErr)
+	} else {
+		if state.DiskName != "" {
+			log.Printf("[orchestrator] deleting disk %q", state.DiskName)
+			if err := cp.DeleteDisk(ctx, state.DiskName); err != nil {
+				return fmt.Errorf("failed to delete disk: %w", err)
+			}
 		}
 
-		log.Printf("[orchestrator] deleting disk %q", state.DiskName)
-		if err := cp.DeleteDisk(ctx, state.DiskName); err != nil {
-			return fmt.Errorf("failed to delete disk: %w", err)
+		// Firewall cleanup is best-effort: the rule is harmless on its own and
+		// the project is going away either way.
+		if fw, ok := cp.(provider.FirewallManager); ok {
+			log.Printf("[orchestrator] deleting firewall rules for project %q", projectName)
+			if err := fw.DeleteFirewall(ctx, projectName); err != nil {
+				log.Printf("[orchestrator] warning: failed to delete firewall rules (continuing): %v", err)
+			}
 		}
 	}
 

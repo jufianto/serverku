@@ -69,3 +69,7 @@ func (n *Notifier) SendDown(ctx context.Context, project string) error {
 func (n *Notifier) SendError(ctx context.Context, project string, err error) error {
 	return n.send(ctx, fmt.Sprintf("❌ *serverku*: Project `%s` encountered an error:\n```%s```", project, err.Error()))
 }
+
+func (n *Notifier) SendTest(ctx context.Context, project string) error {
+	return n.send(ctx, fmt.Sprintf("👋 *serverku*: test notification for project `%s`. You will receive lifecycle updates here.", project))
+}

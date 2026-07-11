@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -209,6 +211,82 @@ func TestNtfyShowsSubscribeInstructions(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("ntfy output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestNotifyTestSendsToConfiguredChannels(t *testing.T) {
+	cfgDir := t.TempDir()
+
+	if _, errOut, err := initDO(t, cfgDir, "demo"); err != nil {
+		t.Fatalf("init failed: %v\nstderr: %s", err, errOut)
+	}
+
+	// Point the project's ntfy server at a local fake and capture publishes.
+	var got struct {
+		path  string
+		title string
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.path = r.URL.Path
+		got.title = r.Header.Get("Title")
+	}))
+	t.Cleanup(srv.Close)
+
+	cfgPath := filepath.Join(cfgDir, "projects", "demo.yaml")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched := strings.Replace(string(data), "    ntfy:\n", "    ntfy:\n        server: "+srv.URL+"\n", 1)
+	if err := os.WriteFile(cfgPath, []byte(patched), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, _, err := runCLI(t, "--config-dir", cfgDir, "notify", "test", "demo")
+	if err != nil {
+		t.Fatalf("notify test failed: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(out, "✓ ntfy") || !strings.Contains(out, "All channels OK") {
+		t.Errorf("unexpected output: %s", out)
+	}
+	if !strings.HasPrefix(got.path, "/serverku-demo-") {
+		t.Errorf("fake server got path %q, want the project topic", got.path)
+	}
+	if got.title == "" {
+		t.Error("expected a Title header on the test publish")
+	}
+}
+
+func TestNotifyTestNoChannelsFails(t *testing.T) {
+	cfgDir := t.TempDir()
+
+	if _, errOut, err := initDO(t, cfgDir, "demo"); err != nil {
+		t.Fatalf("init failed: %v\nstderr: %s", err, errOut)
+	}
+
+	// Strip the generated topic so no channel is configured.
+	cfgPath := filepath.Join(cfgDir, "projects", "demo.yaml")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stripped []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, "topic:") || strings.Contains(line, "ntfy:") {
+			continue
+		}
+		stripped = append(stripped, line)
+	}
+	if err := os.WriteFile(cfgPath, []byte(strings.Join(stripped, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, errOut, err := runCLI(t, "--config-dir", cfgDir, "notify", "test", "demo")
+	if err == nil {
+		t.Fatal("expected error when no channels configured")
+	}
+	if !strings.Contains(errOut, "notify setup") {
+		t.Errorf("error should point at notify setup: %q", errOut)
 	}
 }
 

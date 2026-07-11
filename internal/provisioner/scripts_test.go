@@ -69,3 +69,57 @@ func TestHeartbeatScriptNoRateOmitsCost(t *testing.T) {
 		t.Errorf("no-rate script should not compute cost:\n%s", script)
 	}
 }
+
+func TestHeartbeatScriptNtfyOnly(t *testing.T) {
+	script := heartbeatScript(HeartbeatOpts{
+		Hours:       6,
+		ProjectName: "demo",
+		NtfyServer:  "https://ntfy.sh",
+		NtfyTopic:   "serverku-demo-abc123",
+	})
+
+	if !strings.Contains(script, `"https://ntfy.sh/serverku-demo-abc123"`) {
+		t.Errorf("script missing ntfy publish URL:\n%s", script)
+	}
+	if strings.Contains(script, "api.telegram.org") {
+		t.Errorf("ntfy-only script must not contain telegram send:\n%s", script)
+	}
+	if !strings.Contains(script, "Priority: high") {
+		t.Errorf("ntfy send should be high priority:\n%s", script)
+	}
+}
+
+func TestHeartbeatScriptBothChannels(t *testing.T) {
+	script := heartbeatScript(HeartbeatOpts{
+		Hours:       6,
+		ProjectName: "demo",
+		BotToken:    "123:abc",
+		ChatID:      "42",
+		NtfyServer:  "https://ntfy.sh",
+		NtfyTopic:   "serverku-demo-abc123",
+	})
+
+	if !strings.Contains(script, "api.telegram.org/bot123:abc") ||
+		!strings.Contains(script, "ntfy.sh/serverku-demo-abc123") {
+		t.Errorf("both channels should be present:\n%s", script)
+	}
+}
+
+func TestHeartbeatEnabled(t *testing.T) {
+	cases := []struct {
+		name string
+		hb   HeartbeatOpts
+		want bool
+	}{
+		{"disabled without hours", HeartbeatOpts{NtfyTopic: "t"}, false},
+		{"disabled without channel", HeartbeatOpts{Hours: 6}, false},
+		{"ntfy channel", HeartbeatOpts{Hours: 6, NtfyTopic: "t"}, true},
+		{"telegram channel", HeartbeatOpts{Hours: 6, BotToken: "b", ChatID: "c"}, true},
+		{"telegram needs both fields", HeartbeatOpts{Hours: 6, BotToken: "b"}, false},
+	}
+	for _, c := range cases {
+		if got := c.hb.enabled(); got != c.want {
+			t.Errorf("%s: enabled() = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -65,6 +67,37 @@ type HooksConfig struct {
 type NotificationsConfig struct {
 	Slack    SlackConfig    `yaml:"slack,omitempty"`
 	Telegram TelegramConfig `yaml:"telegram,omitempty"`
+	Ntfy     NtfyConfig     `yaml:"ntfy,omitempty"`
+}
+
+// NtfyConfig holds ntfy (https://ntfy.sh) notification settings. ntfy is
+// account-less publish/subscribe push: the topic name is the only
+// capability, so it is safe to place on the VM for heartbeats -- worst case
+// someone who learns it can send notifications to that one topic.
+type NtfyConfig struct {
+	// Server is the ntfy server base URL. Empty means https://ntfy.sh.
+	Server string `yaml:"server,omitempty"`
+
+	// Topic is the topic to publish to. `serverku init` generates a random
+	// unguessable one (serverku-<project>-<random>). Subscribe to it in the
+	// ntfy app; see `serverku ntfy <project>`.
+	Topic string `yaml:"topic,omitempty"`
+
+	// HeartbeatHours enables the on-VM still-running reminder via ntfy,
+	// like notifications.telegram.heartbeat_hours but with no account-linked
+	// secret on the VM. Zero disables it. Requires topic.
+	HeartbeatHours int `yaml:"heartbeat_hours,omitempty"`
+}
+
+// DefaultNtfyServer is the public ntfy server used when server is unset.
+const DefaultNtfyServer = "https://ntfy.sh"
+
+// ServerURL returns the configured ntfy server or the public default.
+func (n NtfyConfig) ServerURL() string {
+	if n.Server != "" {
+		return strings.TrimRight(n.Server, "/")
+	}
+	return DefaultNtfyServer
 }
 
 // RouterConfig holds caddyku routing configuration.
@@ -179,6 +212,18 @@ func (c *ProjectConfig) Validate() error {
 		}
 	}
 
+	if hb := c.Notifications.Ntfy.HeartbeatHours; hb != 0 {
+		if hb < 0 || hb > 168 {
+			errs = append(errs, "notifications.ntfy.heartbeat_hours must be between 1 and 168")
+		}
+		if c.Notifications.Ntfy.Topic == "" {
+			errs = append(errs, "notifications.ntfy.heartbeat_hours requires topic")
+		}
+	}
+	if topic := c.Notifications.Ntfy.Topic; topic != "" && !isValidNtfyTopic(topic) {
+		errs = append(errs, "notifications.ntfy.topic must contain only letters, digits, underscores, and hyphens (max 64 chars)")
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid project config:\n  - %s", strings.Join(errs, "\n  - "))
 	}
@@ -200,6 +245,35 @@ func (c *ProjectConfig) SetDefaults() {
 	if c.DNS.Enabled && c.DNS.TTL == 0 {
 		c.DNS.TTL = 3600
 	}
+}
+
+// isValidNtfyTopic checks that an ntfy topic is a valid topic name: letters,
+// digits, underscores, and hyphens, at most 64 characters.
+func isValidNtfyTopic(topic string) bool {
+	if len(topic) == 0 || len(topic) > 64 {
+		return false
+	}
+	for _, r := range topic {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// GenerateNtfyTopic returns a random unguessable ntfy topic for a project:
+// serverku-<project>-<12 hex chars>. The randomness is the capability -- the
+// topic name is the only thing needed to publish to (or read) the topic.
+func GenerateNtfyTopic(projectName string) (string, error) {
+	b := make([]byte, 6)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate random topic: %w", err)
+	}
+	topic := fmt.Sprintf("serverku-%s-%s", projectName, hex.EncodeToString(b))
+	if len(topic) > 64 {
+		topic = topic[:64]
+	}
+	return topic, nil
 }
 
 // isValidName checks that a project name contains only lowercase letters, numbers, and hyphens.

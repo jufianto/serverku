@@ -171,6 +171,56 @@ func TestInitDOExplicitSpotFails(t *testing.T) {
 	}
 }
 
+func TestInitGeneratesNtfyTopic(t *testing.T) {
+	cfgDir := t.TempDir()
+
+	if _, errOut, err := initDO(t, cfgDir, "demo"); err != nil {
+		t.Fatalf("init failed: %v\nstderr: %s", err, errOut)
+	}
+
+	data, err := os.ReadFile(filepath.Join(cfgDir, "projects", "demo.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "topic: serverku-demo-") {
+		t.Errorf("config missing generated ntfy topic:\n%s", data)
+	}
+}
+
+func TestNtfyShowsSubscribeInstructions(t *testing.T) {
+	cfgDir := t.TempDir()
+
+	if _, errOut, err := initDO(t, cfgDir, "demo"); err != nil {
+		t.Fatalf("init failed: %v\nstderr: %s", err, errOut)
+	}
+
+	out, _, err := runCLI(t, "--config-dir", cfgDir, "ntfy", "demo")
+	if err != nil {
+		t.Fatalf("ntfy command failed: %v", err)
+	}
+	for _, want := range []string{
+		"Topic:  serverku-demo-",
+		"https://ntfy.sh",
+		"iPhone",
+		"Android",
+		"--test",
+		"heartbeat_hours: 6",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("ntfy output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestNtfyUnknownProjectFails(t *testing.T) {
+	cfgDir := t.TempDir()
+
+	_, _, err := runCLI(t, "--config-dir", cfgDir, "ntfy", "nope")
+	if err == nil {
+		t.Fatal("expected error for unknown project")
+	}
+}
+
 func TestInitGCPRequiresProjectIDAndZone(t *testing.T) {
 	cfgDir := t.TempDir()
 

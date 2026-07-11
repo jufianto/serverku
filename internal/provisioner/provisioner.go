@@ -65,27 +65,41 @@ type ProvisionOpts struct {
 	Heartbeat HeartbeatOpts
 }
 
-// HeartbeatOpts configures an on-VM Telegram reminder: a systemd timer that
-// messages the chat every Hours hours with uptime and accrued cost while the
-// VM is running. It lives on the VM, so it keeps working when the local
-// machine is offline and can never fire after the VM is destroyed.
+// HeartbeatOpts configures an on-VM still-running reminder: a systemd timer
+// that messages the configured channels every Hours hours with uptime and
+// accrued cost while the VM is running. It lives on the VM, so it keeps
+// working when the local machine is offline and can never fire after the VM
+// is destroyed.
 type HeartbeatOpts struct {
-	// Hours is the reminder interval; zero disables the heartbeat.
+	// Hours is the reminder interval; zero disables the heartbeat. When both
+	// channels are configured with different intervals, the smaller wins.
 	Hours int
 
 	// ProjectName is included in the message and the suggested down command.
 	ProjectName string
 
-	// BotToken and ChatID are the Telegram credentials. The token is written
+	// BotToken and ChatID enable the Telegram channel. The token is written
 	// to a root-only script on the VM.
 	BotToken string
 	ChatID   string
+
+	// NtfyServer and NtfyTopic enable the ntfy channel -- account-less push
+	// where the topic name is the only capability, so nothing account-linked
+	// lands on the VM.
+	NtfyServer string
+	NtfyTopic  string
 
 	// HourlyRateUSD is the VM's hourly rate used to report accrued cost; zero
 	// omits cost from the message. RateIsLive distinguishes a real provider
 	// API price (shown as-is) from an offline table estimate (marked est.).
 	HourlyRateUSD float64
 	RateIsLive    bool
+}
+
+// enabled reports whether the heartbeat should be installed: an interval plus
+// at least one configured channel.
+func (hb HeartbeatOpts) enabled() bool {
+	return hb.Hours > 0 && (hb.BotToken != "" && hb.ChatID != "" || hb.NtfyTopic != "")
 }
 
 // TeardownOpts holds the parameters needed to teardown a VM before destruction.
@@ -235,8 +249,8 @@ func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) erro
 		log.Printf("[provisioner] containers started")
 	}
 
-	if opts.Heartbeat.Hours > 0 {
-		log.Printf("[provisioner] installing telegram heartbeat (every %dh)...", opts.Heartbeat.Hours)
+	if opts.Heartbeat.enabled() {
+		log.Printf("[provisioner] installing heartbeat (every %dh)...", opts.Heartbeat.Hours)
 		if out, err := runCommand(client, heartbeatScript(opts.Heartbeat)); err != nil {
 			// Non-fatal: the deployment itself succeeded and the local
 			// notifier still reports up/down. But warn loudly -- a silent

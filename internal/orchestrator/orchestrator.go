@@ -681,16 +681,27 @@ func (o *Orchestrator) Backup(ctx context.Context, projectName, snapshotName str
 // capability) and falls back to the offline table, preserving provenance so
 // the heartbeat message marks estimates as est.
 func heartbeatOpts(ctx context.Context, cfg *config.ProjectConfig, cp provider.CloudProvider, projectName string) provisioner.HeartbeatOpts {
-	tg := cfg.Notifications.Telegram
-	if tg.HeartbeatHours <= 0 || tg.BotToken == "" || tg.ChatID == "" {
-		return provisioner.HeartbeatOpts{}
+	hb := provisioner.HeartbeatOpts{ProjectName: projectName}
+
+	// Telegram channel: account-linked bot token, root-only on the VM.
+	if tg := cfg.Notifications.Telegram; tg.HeartbeatHours > 0 && tg.BotToken != "" && tg.ChatID != "" {
+		hb.Hours = tg.HeartbeatHours
+		hb.BotToken = tg.BotToken
+		hb.ChatID = tg.ChatID
 	}
 
-	hb := provisioner.HeartbeatOpts{
-		Hours:       tg.HeartbeatHours,
-		ProjectName: projectName,
-		BotToken:    tg.BotToken,
-		ChatID:      tg.ChatID,
+	// ntfy channel: account-less, the topic name is the only capability.
+	// When both channels are configured, the smaller interval wins.
+	if nt := cfg.Notifications.Ntfy; nt.HeartbeatHours > 0 && nt.Topic != "" {
+		if hb.Hours == 0 || nt.HeartbeatHours < hb.Hours {
+			hb.Hours = nt.HeartbeatHours
+		}
+		hb.NtfyServer = nt.ServerURL()
+		hb.NtfyTopic = nt.Topic
+	}
+
+	if hb.Hours == 0 {
+		return provisioner.HeartbeatOpts{}
 	}
 
 	rate := pricing.TableRate(cfg)

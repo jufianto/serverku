@@ -74,8 +74,13 @@ implementations; the orchestrator is provider-agnostic.
   `state/<name>.json` (runtime state). Provider operations key off VM/disk *names*
   for follow-up API calls even though numeric IDs are also stored — preserve both
   when editing lifecycle code.
-- **`internal/pricing/`** — offline hardcoded pricing tables for rough cost
-  estimates. Does **not** call billing APIs.
+- **`internal/pricing/`** — offline pricing tables plus the `Rate` type that
+  carries price provenance (`Live` API price vs table estimate). Live prices
+  come from providers implementing the optional `PriceCatalog` capability
+  (DO `/v2/sizes`, GCP Billing Catalog SKUs); table fallbacks must always be
+  displayed with an `est.` marker — never present an estimate as a real price.
+  `UsageReporter` (DO only) reports real month-to-date account usage.
+  `cmd/serverku/cost.go` holds the per-invocation `rateCache`.
 - **`internal/notify/`** — Slack and Telegram notifiers behind a `Notifier` interface.
 
 ### Config and state on disk

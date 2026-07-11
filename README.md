@@ -23,14 +23,14 @@ Cloud VMs are billed while they are running, even when nobody is using them. For
 - **Interactive setup**: Create project configs through a guided `serverku init` wizard.
 - **GCP and DigitalOcean providers**: Provision Compute Engine instances or DigitalOcean Droplets.
 - **SSH utilities**: Open shells, stream Compose logs, and create secure port tunnels through managed SSH keys.
-- **Notifications**: Send lifecycle updates to Slack and Telegram.
-- **Cost estimates**: Show rough local VM/storage cost estimates in CLI output.
+- **Notifications**: Send lifecycle updates to Slack and Telegram, plus an optional on-VM Telegram heartbeat that reminds you a VM is still running (and what it has cost so far).
+- **Real cost visibility**: Live per-VM prices from the provider APIs (DigitalOcean sizes, GCP Billing Catalog), accrued session cost in `status`/`list`, and DigitalOcean month-to-date account usage. Offline table estimates are used as fallback and always marked `est.`.
 
 ## Status
 
 `serverku` is early-stage software. The core workflow exists, but real cloud provisioning should be tested carefully in throwaway projects before using it for important workloads.
 
-The current pricing feature is an offline rough estimate, not provider billing data. Real provider-backed pricing is planned.
+Cost figures prefer live provider pricing APIs and clearly mark offline fallback estimates with `est.` — an estimate is never presented as a bill.
 
 ## Install
 
@@ -182,7 +182,7 @@ serverku init myapp --non-interactive \
 | `-r, --region` | Cloud region. |
 | `-z, --zone` | Cloud zone (required for GCP). |
 | `-s, --size` | VM machine type (default `e2-medium`). |
-| `--spot` | Use SPOT/preemptible instances (**default `true`**; GCP only — pass `--spot=false` for DigitalOcean or on-demand VMs). |
+| `--spot` | Use SPOT/preemptible instances (GCP only; defaults to `true` for GCP and `false` for DigitalOcean, which rejects it). |
 | `--no-storage` | Create a fully stateless project without a persistent disk. |
 | `--storage-gb` | Persistent disk size in GB (default `20`). |
 | `--non-interactive` | Skip the interactive wizard. |
@@ -234,7 +234,7 @@ What happens:
 - Writes the Compose file.
 - Installs and initializes Caddyku if routing is enabled.
 - Runs `docker compose up -d`.
-- Prints the VM IP and rough cost estimate.
+- Prints the VM IP and hourly cost (live provider price when available).
 
 ### 5. Operate the app
 
@@ -336,6 +336,7 @@ notifications:
   telegram:
     bot_token: "123456:ABC"
     chat_id: "123456789"
+    heartbeat_hours: 6   # on-VM reminder every 6h while running (see Notifications)
 ```
 
 ## Providers
@@ -456,13 +457,63 @@ Notes:
 - Restoring from a snapshot is not yet automated — create a volume/disk from the
   snapshot in your provider console for now.
 
-## Cost Estimates
+## Costs
 
-`serverku` currently uses local hardcoded pricing tables to show rough estimates.
+serverku is built to save budget, so it treats cost figures as
+accuracy-sensitive. Two sources are used, and the display always tells you
+which one you're looking at:
 
-It does not call cloud billing APIs yet. Estimates do not include taxes, bandwidth, snapshots, discounts, promotions, reserved pricing, or region-specific differences unless encoded in the local tables.
+- **Live provider prices** — shown as-is (e.g. `$0.0089/hr`).
+  - DigitalOcean: hourly rates from the `/v2/sizes` API (the prices DO
+    itself bills by), plus real account **month-to-date usage** from the
+    balance API, shown in `status`.
+  - GCP: rates derived from the Cloud Billing Catalog API (core-hours +
+    RAM GiB-hours per region, spot-aware). Requires the Cloud Billing API
+    to be enabled; supports the e2/n1/n2/n2d families.
+- **Offline table estimates** — the fallback when a live lookup is
+  unavailable, always marked with `~`/`est.` (e.g. `~$0.0089/hr est.`).
+  An estimate is never presented as a bill.
 
-Real provider-backed pricing is planned.
+While a project runs, `status` and `list` show the **accrued session
+cost** — what this VM has actually cost since `up`:
+
+```text
+Uptime:    7h30m12s
+Session:   $0.07 ($0.0089/hr)
+```
+
+Figures cover VM compute (and storage monthly estimates); they exclude
+taxes, bandwidth, and snapshots.
+
+## Telegram Heartbeat
+
+The most expensive VM is the one you forgot. With `heartbeat_hours` set,
+provisioning installs a systemd timer **on the VM** that messages your
+Telegram chat every N hours for as long as the VM runs:
+
+```text
+serverku: myapp still running -- up 7h30m, $0.07 so far ($0.0089/hr).
+Stop with: serverku down myapp
+```
+
+```yaml
+notifications:
+  telegram:
+    bot_token: "123456:ABC"
+    chat_id: "123456789"
+    heartbeat_hours: 6
+```
+
+Why on the VM instead of your machine?
+
+- It keeps reminding you **while your laptop is off** — exactly when VMs
+  get forgotten.
+- It dies with the VM, so it can never false-alarm after `down`/`destroy`.
+- The accrued cost in the message uses the same honest provenance rules as
+  the CLI (live prices plain, estimates marked `est.`).
+
+> **Security:** the bot token is written to a root-only (0700) script on
+> the VM. Use a bot dedicated to these notifications.
 
 ## Local Development
 
@@ -528,7 +579,6 @@ See `INTERNAL_README.md` for a deeper feature-by-feature verification matrix and
 
 ## Roadmap
 
-- Real provider-backed pricing.
 - Snapshot restore and scheduled/automatic backups.
 - Additional cloud providers later.
 

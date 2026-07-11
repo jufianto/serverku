@@ -17,12 +17,5 @@ linters:
     - unconvert     # redundant type conversions
 
 issues:
-  exclude-rules:
-    # Reference-only legacy package, not built into the CLI.
-    - path: internal/legacy/
-      linters:
-        - errcheck
-        - staticcheck
-        - unused
   max-issues-per-linter: 0
   max-same-issues: 0

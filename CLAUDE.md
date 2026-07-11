@@ -94,11 +94,6 @@ Default base dir is `~/.serverku/` (override with `--config-dir`):
 Project names are validated strictly: lowercase letters, digits, and hyphens only;
 no leading/trailing hyphen.
 
-### Not part of the live CLI
-
-- **`internal/legacy/`** — the original Telegram-bot + Firestore implementation,
-  preserved as reference only. Not used by the CLI; do not wire new code to it.
-
 ## GCP notes
 
 GCP provider construction (`internal/provider/gcp/gcp.go`) uses `compute.NewService(ctx)`,

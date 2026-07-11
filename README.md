@@ -73,6 +73,7 @@ walkthroughs deploying real open-source apps, from beginner to advanced:
 1. [Uptime Kuma (JS) on DigitalOcean in 10 minutes](docs/tutorial-uptime-kuma-digitalocean.md) — the minimal first deploy.
 2. [WordPress (PHP) with HTTPS, DNS automation, and persistent data](docs/tutorial-wordpress-digitalocean.md) — the full production flow.
 3. [Gitea (Go) on GCP spot instances with snapshots](docs/tutorial-gitea-gcp.md) — cheap interruptible compute done right.
+4. [Notifications: never pay for a forgotten VM](docs/tutorial-notifications.md) — ntfy, the Telegram wizard, and the still-running heartbeat.
 
 ## Quick Start
 

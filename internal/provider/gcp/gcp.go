@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jufianto/serverku/internal/provider"
+	"google.golang.org/api/cloudbilling/v1"
 	"google.golang.org/api/compute/v1"
 	dns "google.golang.org/api/dns/v1"
 )
@@ -29,10 +30,11 @@ const (
 
 // GCPProvider implements provider.CloudProvider for Google Cloud Platform.
 type GCPProvider struct {
-	service    *compute.Service
-	dnsService *dns.Service
-	projectID  string
-	zone       string
+	service        *compute.Service
+	dnsService     *dns.Service
+	billingService *cloudbilling.APIService
+	projectID      string
+	zone           string
 }
 
 // New creates a new GCPProvider using Application Default Credentials.
@@ -48,12 +50,31 @@ func New(ctx context.Context, projectID string, zone string) (*GCPProvider, erro
 		return nil, fmt.Errorf("failed to create GCP DNS service: %w", err)
 	}
 
+	// Billing catalog access is optional: without it, live pricing lookups
+	// fail and callers fall back to labeled offline estimates.
+	billingSvc, err := cloudbilling.NewService(ctx)
+	if err != nil {
+		log.Printf("[gcp] cloud billing service unavailable (cost figures will be offline estimates): %v", err)
+		billingSvc = nil
+	}
+
 	return &GCPProvider{
-		service:    svc,
-		dnsService: dnsSvc,
-		projectID:  projectID,
-		zone:       zone,
+		service:        svc,
+		dnsService:     dnsSvc,
+		billingService: billingSvc,
+		projectID:      projectID,
+		zone:           zone,
 	}, nil
+}
+
+// NewWithBillingService creates a GCPProvider with an injected billing
+// service (for testing pricing lookups).
+func NewWithBillingService(billingSvc *cloudbilling.APIService, projectID string, zone string) *GCPProvider {
+	return &GCPProvider{
+		billingService: billingSvc,
+		projectID:      projectID,
+		zone:           zone,
+	}
 }
 
 // NewWithService creates a GCPProvider with an injected compute service (for testing).

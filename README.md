@@ -56,7 +56,7 @@ go install github.com/jufianto/serverku/cmd/serverku@latest
 
 ## Requirements
 
-- Go 1.21+ for building from source.
+- Go 1.23+ for building from source.
 - `ssh` installed locally.
 - `rsync` installed locally when using `sync_dir`.
 - A cloud account for real deployments.
@@ -159,6 +159,25 @@ It also ensures the managed SSH keypair exists under:
 ~/.serverku/keys/serverku_rsa.pub
 ```
 
+For scripting, skip the wizard with `--non-interactive` and pass everything as flags:
+
+```bash
+serverku init myapp --non-interactive \
+  --provider digitalocean --region sgp1 --size s-1vcpu-1gb --no-storage
+```
+
+| Flag | Description |
+| --- | --- |
+| `-p, --provider` | Cloud provider (`gcp`, `digitalocean`). |
+| `--project-id` | Cloud project ID (required for GCP). |
+| `-r, --region` | Cloud region. |
+| `-z, --zone` | Cloud zone (required for GCP). |
+| `-s, --size` | VM machine type (default `e2-medium`). |
+| `--spot` | Use SPOT/preemptible instances (**default `true`**; GCP only — pass `--spot=false` for DigitalOcean or on-demand VMs). |
+| `--no-storage` | Create a fully stateless project without a persistent disk. |
+| `--storage-gb` | Persistent disk size in GB (default `20`). |
+| `--non-interactive` | Skip the interactive wizard. |
+
 ### 3. Configure sync and routing
 
 Point `sync_dir` at your local project directory. Configure `router` if you want HTTPS through Caddyku.
@@ -240,8 +259,8 @@ This removes cloud resources and local project state/config. Treat it as irrever
 | --- | --- |
 | `serverku init <project>` | Create a project config and SSH keys. |
 | `serverku up <project>` | Create VM, attach storage, provision, sync, and deploy. |
-| `serverku down <project>` | Destroy VM while preserving persistent storage. |
-| `serverku destroy <project>` | Delete VM, storage, state, and config. |
+| `serverku down <project>` | Destroy VM while preserving persistent storage. Use `-f/--force` to skip the confirmation prompt. |
+| `serverku destroy <project>` | Delete VM, storage, state, and config. Use `-f/--force` to skip the confirmation prompt. |
 | `serverku status <project>` | Show project status and reconcile with provider. |
 | `serverku list` | List all projects with status and estimated costs. |
 | `serverku ssh <project>` | Open an interactive SSH shell. |
@@ -438,7 +457,17 @@ Real provider-backed pricing is planned.
 
 ## Local Development
 
-Build:
+A Makefile wraps the common tasks (`make help` lists them all):
+
+```bash
+make build       # build the CLI binary
+make test        # run all tests
+make test-race   # tests with the race detector
+make lint        # golangci-lint
+make check       # fmt + vet + test (run before pushing)
+```
+
+Or with plain Go — build:
 
 ```bash
 go build -o serverku ./cmd/serverku
@@ -476,7 +505,7 @@ go test ./...
 ./serverku help
 ```
 
-Local tests cover config, orchestration logic, pricing estimates, notification composition, and some provider helper behavior.
+Local tests cover config, orchestration logic, pricing estimates, notification composition, provider behavior (via fake API endpoints), and end-to-end CLI flows. CI runs build, tests, and golangci-lint on every push and pull request.
 
 See `INTERNAL_README.md` for a deeper feature-by-feature verification matrix and offline testing plan.
 
@@ -492,7 +521,6 @@ See `INTERNAL_README.md` for a deeper feature-by-feature verification matrix and
 
 - Real provider-backed pricing.
 - Snapshot restore and scheduled/automatic backups.
-- More offline command/script tests.
 - Additional cloud providers later.
 
 ## License

@@ -125,11 +125,12 @@ func configureAppDomainsScript(domains []string, services []string, upstreams []
 	return script
 }
 
-// heartbeatScript returns a shell script that installs the on-VM Telegram
-// heartbeat: a reporting script plus a systemd timer that fires every
-// hb.Hours hours while the VM runs. Because it lives on the VM it works while
-// the local machine is offline and dies with the VM, so a reminder can never
-// outlive the resource it warns about.
+// heartbeatScript returns a shell script that installs the on-VM heartbeat:
+// a reporting script plus a systemd timer that fires every hb.Hours hours
+// while the VM runs, sending to every configured channel (Telegram, ntfy).
+// Because it lives on the VM it works while the local machine is offline and
+// dies with the VM, so a reminder can never outlive the resource it warns
+// about.
 //
 // Cost provenance is preserved: a live provider rate renders without markers,
 // an offline table rate renders with est. markers, and no rate omits cost.
@@ -146,6 +147,20 @@ func heartbeatScript(hb HeartbeatOpts) string {
 		)
 	}
 
+	// One send per configured channel; failures are independent (no set -e in
+	// the reporter) so one channel being down does not silence the other.
+	var sends string
+	if hb.BotToken != "" && hb.ChatID != "" {
+		sends += fmt.Sprintf(`curl -fsS -m 10 "https://api.telegram.org/bot%s/sendMessage" \
+  -d chat_id="%s" --data-urlencode "text=${TEXT}" >/dev/null
+`, hb.BotToken, hb.ChatID)
+	}
+	if hb.NtfyTopic != "" {
+		sends += fmt.Sprintf(`curl -fsS -m 10 -H "Title: serverku: %s still running" -H "Priority: high" -H "Tags: warning,moneybag" \
+  -d "${TEXT}" "%s/%s" >/dev/null
+`, hb.ProjectName, hb.NtfyServer, hb.NtfyTopic)
+	}
+
 	reporter := fmt.Sprintf(`#!/bin/sh
 STARTED=$(cat /var/lib/serverku/heartbeat-started)
 NOW=$(date +%%s)
@@ -153,9 +168,7 @@ UPH=$(( (NOW - STARTED) / 3600 ))
 UPM=$(( ((NOW - STARTED) %% 3600) / 60 ))
 %s
 TEXT="serverku: %s still running -- up ${UPH}h${UPM}m${COST}. Stop with: serverku down %s"
-curl -fsS -m 10 "https://api.telegram.org/bot%s/sendMessage" \
-  -d chat_id="%s" --data-urlencode "text=${TEXT}" >/dev/null
-`, costLine, hb.ProjectName, hb.ProjectName, hb.BotToken, hb.ChatID)
+%s`, costLine, hb.ProjectName, hb.ProjectName, sends)
 
 	return fmt.Sprintf(`set -e
 sudo mkdir -p /var/lib/serverku

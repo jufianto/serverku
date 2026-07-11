@@ -7,6 +7,7 @@ import (
 
 	"github.com/jufianto/serverku/internal/config"
 	"github.com/jufianto/serverku/internal/notify"
+	"github.com/jufianto/serverku/internal/notify/ntfy"
 	"github.com/jufianto/serverku/internal/notify/slack"
 	"github.com/jufianto/serverku/internal/notify/telegram"
 	"github.com/jufianto/serverku/internal/orchestrator"
@@ -43,6 +44,10 @@ func buildNotifier(cfg *config.ProjectConfig) notify.Notifier {
 
 	if cfg.Notifications.Telegram.BotToken != "" && cfg.Notifications.Telegram.ChatID != "" {
 		notifiers = append(notifiers, telegram.New(cfg.Notifications.Telegram.BotToken, cfg.Notifications.Telegram.ChatID))
+	}
+
+	if cfg.Notifications.Ntfy.Topic != "" {
+		notifiers = append(notifiers, ntfy.New(cfg.Notifications.Ntfy.ServerURL(), cfg.Notifications.Ntfy.Topic))
 	}
 
 	if len(notifiers) == 0 {

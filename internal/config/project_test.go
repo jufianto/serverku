@@ -163,6 +163,45 @@ func TestProjectConfig_Validate_HeartbeatRequiresCredentials(t *testing.T) {
 	}
 }
 
+func TestProjectConfig_Validate_NtfyHeartbeatRequiresTopic(t *testing.T) {
+	cfg := validGCPConfig("test")
+	cfg.Notifications.Ntfy.HeartbeatHours = 6
+
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for ntfy heartbeat without topic")
+	}
+
+	cfg.Notifications.Ntfy.Topic = "serverku-test-abc123"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("ntfy heartbeat with topic should validate, got: %v", err)
+	}
+
+	cfg.Notifications.Ntfy.Topic = "bad topic with spaces"
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for invalid topic characters")
+	}
+}
+
+func TestGenerateNtfyTopic(t *testing.T) {
+	a, err := GenerateNtfyTopic("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := GenerateNtfyTopic("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a == b {
+		t.Error("topics must be random, got identical values")
+	}
+	if !isValidNtfyTopic(a) {
+		t.Errorf("generated topic %q is not valid", a)
+	}
+	if len(a) > 64 {
+		t.Errorf("topic too long: %d chars", len(a))
+	}
+}
+
 func TestProjectConfig_Validate_StorageEnabled_MissingFields(t *testing.T) {
 	cfg := validGCPConfig("test")
 	cfg.Storage = StorageConfig{

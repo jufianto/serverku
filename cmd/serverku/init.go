@@ -77,6 +77,14 @@ interactive prompts.`,
 
 			cfg.SetDefaults()
 
+			// Generate an unguessable ntfy topic so push notifications work
+			// out of the box (see `serverku ntfy <project>`).
+			topic, err := config.GenerateNtfyTopic(name)
+			if err != nil {
+				return err
+			}
+			cfg.Notifications.Ntfy.Topic = topic
+
 			if err := cfg.Validate(); err != nil {
 				return err
 			}
@@ -86,12 +94,13 @@ interactive prompts.`,
 			}
 
 			// Ensure SSH keys exist
-			_, _, err := store.EnsureSSHKeys()
+			_, _, err = store.EnsureSSHKeys()
 			if err != nil {
 				return fmt.Errorf("failed to generate SSH keys: %w", err)
 			}
 
 			fmt.Printf("Project %q created at %s/projects/%s.yaml\n", name, store.BaseDir(), name)
+			fmt.Printf("Notifications: run `serverku ntfy %s` to set up push notifications\n", name)
 			fmt.Println("Edit the config file to customize, then run: serverku up", name)
 			return nil
 		},
@@ -272,6 +281,14 @@ func runInteractiveInit(name string) error {
 
 	cfg.SetDefaults()
 
+	// Generate an unguessable ntfy topic so push notifications work out of
+	// the box (see `serverku ntfy <project>`).
+	topic, err := config.GenerateNtfyTopic(name)
+	if err != nil {
+		return err
+	}
+	cfg.Notifications.Ntfy.Topic = topic
+
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
@@ -288,6 +305,7 @@ func runInteractiveInit(name string) error {
 
 	fmt.Println()
 	fmt.Printf("Project %q created at %s/projects/%s.yaml\n", name, store.BaseDir(), name)
+	fmt.Printf("Notifications: run `serverku ntfy %s` to set up push notifications\n", name)
 	fmt.Println("Edit the config file to customize, then run: serverku up", name)
 	return nil
 }

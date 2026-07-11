@@ -618,8 +618,18 @@ See [`docs/development.md`](docs/development.md) for the contributor guide and o
 
 ## Roadmap
 
-- Snapshot restore and scheduled/automatic backups.
-- Additional cloud providers later.
+- [ ] **Hetzner Cloud provider** — the most-requested next cloud. The
+  `CloudProvider` interface is small and well-trodden; see
+  [`docs/development.md`](docs/development.md#adding-a-cloud-provider) if
+  you want to contribute it.
+- [ ] `vm.max_uptime` kill switch — the heartbeat tells you a VM is still
+  running; this one would act on it.
+- [ ] Scheduled/automatic backups.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) — bug fixes, tutorials, and new
+providers are all welcome. Security reports: [SECURITY.md](SECURITY.md).
 
 ## License
 

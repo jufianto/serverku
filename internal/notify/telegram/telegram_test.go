@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newTestNotifier returns a Notifier pointed at a test server that records the
@@ -84,5 +85,77 @@ func TestSend_Non2xxReturnsError(t *testing.T) {
 
 	if err := n.SendUp(context.Background(), "myapp", "1.2.3.4"); err == nil {
 		t.Fatal("expected error on 400 response, got nil")
+	}
+}
+
+func TestGetMe(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/bot123:abc/getMe" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"username":"serverku_demo_bot"}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	bot, err := getMe(context.Background(), srv.URL, "123:abc")
+	if err != nil {
+		t.Fatalf("getMe: %v", err)
+	}
+	if bot.Username != "serverku_demo_bot" {
+		t.Errorf("username = %q", bot.Username)
+	}
+}
+
+func TestGetMe_BadToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"ok":false}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	if _, err := getMe(context.Background(), srv.URL, "bad"); err == nil {
+		t.Fatal("expected error for rejected token")
+	}
+}
+
+func TestDiscoverChatID(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			// First poll: no messages yet.
+			_, _ = w.Write([]byte(`{"ok":true,"result":[]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"result":[
+			{"message":{"chat":{"id":111,"first_name":"Old"}}},
+			{"message":{"chat":{"id":424242,"first_name":"Jufi"}}}
+		]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	chat, err := discoverChatID(context.Background(), srv.URL, "123:abc")
+	if err != nil {
+		t.Fatalf("discoverChatID: %v", err)
+	}
+	if chat.ID != "424242" || chat.Name != "Jufi" {
+		t.Errorf("chat = %+v, want most recent (424242/Jufi)", chat)
+	}
+	if calls < 2 {
+		t.Errorf("expected polling across empty responses, got %d calls", calls)
+	}
+}
+
+func TestDiscoverChatID_ContextCancelled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true,"result":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	if _, err := discoverChatID(ctx, srv.URL, "123:abc"); err == nil {
+		t.Fatal("expected error when no message arrives before ctx deadline")
 	}
 }

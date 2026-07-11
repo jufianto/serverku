@@ -277,6 +277,8 @@ This removes cloud resources and local project state/config. Treat it as irrever
 | `serverku tunnel <project> <local>:<remote>` | Open an SSH port-forwarding tunnel. |
 | `serverku backup <project>` | Snapshot the project's persistent disk. |
 | `serverku ntfy <project>` | Show how to subscribe to push notifications; `--test` sends a test message. |
+| `serverku notify setup <project>` | Interactive wizard: connect ntfy or Telegram and verify with a real test send. |
+| `serverku notify test <project>` | Send a test notification to every configured channel. |
 
 Global flags:
 
@@ -490,23 +492,29 @@ Session:   $0.07 ($0.0089/hr)
 Figures cover VM compute (and storage monthly estimates); they exclude
 taxes, bandwidth, and snapshots.
 
-## Push Notifications (ntfy)
+## Notifications
 
-serverku's recommended notification channel is [ntfy](https://ntfy.sh):
-account-less publish/subscribe push where the project's randomly generated
-topic name is the only credential. `init` generates a topic automatically;
-set up your phone with:
+Set up a channel with the guided wizard — it connects the channel and
+**verifies it end to end by sending a real test notification from your
+machine** before saving anything:
 
 ```bash
-serverku ntfy myapp          # shows the topic + subscribe instructions
-serverku ntfy myapp --test   # sends a test notification
+serverku notify setup myapp   # pick ntfy or Telegram, connect, test, confirm
+serverku notify test myapp    # re-send a test to every configured channel
 ```
 
-Subscribe once in the ntfy app (iPhone/Android, free) or open
-`https://ntfy.sh/<topic>` in a browser, and you'll receive up/down/error
-notifications. The public ntfy.sh server is free; self-host with
+**ntfy (recommended):** account-less publish/subscribe push where the
+project's randomly generated topic name is the only credential. `init`
+generates a topic automatically; `serverku ntfy myapp` shows it with
+subscribe instructions (`--test` sends a test message). Subscribe once in
+the ntfy app (iPhone/Android, free) or open `https://ntfy.sh/<topic>` in a
+browser. The public ntfy.sh server is free; self-host with
 `notifications.ntfy.server` if you prefer (iOS push then relays its wake-up
 signal through ntfy.sh — an Apple/APNs constraint).
+
+**Telegram:** the wizard verifies your bot token against the Telegram API,
+then auto-discovers your `chat_id` — you just send your bot one message —
+and finishes with a test send. No manual `getUpdates` spelunking.
 
 ## Still-Running Heartbeat
 

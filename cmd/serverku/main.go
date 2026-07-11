@@ -67,6 +67,7 @@ When done, tear it down. Pay only for storage when idle.`,
 		newTunnelCmd(),
 		newBackupCmd(),
 		newNtfyCmd(),
+		newNotifyCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

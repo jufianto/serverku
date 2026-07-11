@@ -143,6 +143,26 @@ func TestProjectConfig_Validate_DORejectsSpot(t *testing.T) {
 	}
 }
 
+func TestProjectConfig_Validate_HeartbeatRequiresCredentials(t *testing.T) {
+	cfg := validGCPConfig("test")
+	cfg.Notifications.Telegram.HeartbeatHours = 6
+
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for heartbeat without bot_token/chat_id")
+	}
+
+	cfg.Notifications.Telegram.BotToken = "123:abc"
+	cfg.Notifications.Telegram.ChatID = "42"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("heartbeat with credentials should validate, got: %v", err)
+	}
+
+	cfg.Notifications.Telegram.HeartbeatHours = 500
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for heartbeat_hours out of range")
+	}
+}
+
 func TestProjectConfig_Validate_StorageEnabled_MissingFields(t *testing.T) {
 	cfg := validGCPConfig("test")
 	cfg.Storage = StorageConfig{

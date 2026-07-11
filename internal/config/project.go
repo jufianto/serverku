@@ -89,6 +89,13 @@ type SlackConfig struct {
 type TelegramConfig struct {
 	BotToken string `yaml:"bot_token,omitempty"`
 	ChatID   string `yaml:"chat_id,omitempty"`
+
+	// HeartbeatHours enables an on-VM reminder: while the VM runs, a systemd
+	// timer on the VM messages the chat every N hours with uptime and accrued
+	// cost, so a forgotten VM cannot burn budget silently. It runs on the VM
+	// itself (works while the local machine is off) and dies with the VM.
+	// Zero disables it. Requires bot_token and chat_id.
+	HeartbeatHours int `yaml:"heartbeat_hours,omitempty"`
 }
 
 // VMConfig holds VM-specific configuration.
@@ -161,6 +168,15 @@ func (c *ProjectConfig) Validate() error {
 
 	if c.DNS.Enabled && len(c.Router.Domains) == 0 {
 		errs = append(errs, "dns.enabled requires at least one router.domains entry")
+	}
+
+	if hb := c.Notifications.Telegram.HeartbeatHours; hb != 0 {
+		if hb < 0 || hb > 168 {
+			errs = append(errs, "notifications.telegram.heartbeat_hours must be between 1 and 168")
+		}
+		if c.Notifications.Telegram.BotToken == "" || c.Notifications.Telegram.ChatID == "" {
+			errs = append(errs, "notifications.telegram.heartbeat_hours requires bot_token and chat_id")
+		}
 	}
 
 	if len(errs) > 0 {

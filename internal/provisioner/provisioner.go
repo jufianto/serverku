@@ -59,6 +59,33 @@ type ProvisionOpts struct {
 
 	// StartupCommands are additional shell commands to run after provisioning.
 	StartupCommands []string
+
+	// Heartbeat configures the on-VM Telegram heartbeat. Heartbeat.Hours == 0
+	// disables it.
+	Heartbeat HeartbeatOpts
+}
+
+// HeartbeatOpts configures an on-VM Telegram reminder: a systemd timer that
+// messages the chat every Hours hours with uptime and accrued cost while the
+// VM is running. It lives on the VM, so it keeps working when the local
+// machine is offline and can never fire after the VM is destroyed.
+type HeartbeatOpts struct {
+	// Hours is the reminder interval; zero disables the heartbeat.
+	Hours int
+
+	// ProjectName is included in the message and the suggested down command.
+	ProjectName string
+
+	// BotToken and ChatID are the Telegram credentials. The token is written
+	// to a root-only script on the VM.
+	BotToken string
+	ChatID   string
+
+	// HourlyRateUSD is the VM's hourly rate used to report accrued cost; zero
+	// omits cost from the message. RateIsLive distinguishes a real provider
+	// API price (shown as-is) from an offline table estimate (marked est.).
+	HourlyRateUSD float64
+	RateIsLive    bool
 }
 
 // TeardownOpts holds the parameters needed to teardown a VM before destruction.
@@ -206,6 +233,16 @@ func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) erro
 			return fmt.Errorf("failed to start containers: %w", err)
 		}
 		log.Printf("[provisioner] containers started")
+	}
+
+	if opts.Heartbeat.Hours > 0 {
+		log.Printf("[provisioner] installing telegram heartbeat (every %dh)...", opts.Heartbeat.Hours)
+		if out, err := runCommand(client, heartbeatScript(opts.Heartbeat)); err != nil {
+			// Non-fatal: the deployment itself succeeded and the local
+			// notifier still reports up/down. But warn loudly -- a silent
+			// heartbeat failure means no still-running reminders.
+			log.Printf("[provisioner] WARNING: heartbeat install failed (no still-running reminders will be sent): %v\noutput:\n%s", err, out)
+		}
 	}
 
 	for i, cmd := range opts.StartupCommands {

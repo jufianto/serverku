@@ -968,3 +968,54 @@ func TestDestroyFirewallFailureIsNonFatal(t *testing.T) {
 		t.Error("project config should be deleted even when firewall cleanup fails")
 	}
 }
+
+func TestUpPassesHeartbeatToProvisioner(t *testing.T) {
+	mp := &mockProvisioner{}
+	orch, _, factory := testSetupWithProvisioner(t, config.StorageConfig{Enabled: false}, mp)
+
+	// Enable the heartbeat on the saved project config.
+	cfg, err := orch.store.LoadProject("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Notifications.Telegram = config.TelegramConfig{
+		BotToken:       "123:abc",
+		ChatID:         "42",
+		HeartbeatHours: 6,
+	}
+	if err := orch.store.SaveProject(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	if _, err := orch.Up(ctx, "test-project", factory); err != nil {
+		t.Fatalf("Up() error: %v", err)
+	}
+
+	if len(mp.provisionCalls) != 1 {
+		t.Fatalf("Provision() called %d times, want 1", len(mp.provisionCalls))
+	}
+	hb := mp.provisionCalls[0].Heartbeat
+	if hb.Hours != 6 || hb.BotToken != "123:abc" || hb.ChatID != "42" || hb.ProjectName != "test-project" {
+		t.Errorf("unexpected heartbeat opts: %+v", hb)
+	}
+	// testSetup uses gcp/e2-medium/spot, which the offline table does not
+	// price for spot -- but a rate must never be presented as live without a
+	// PriceCatalog provider.
+	if hb.RateIsLive {
+		t.Errorf("rate must not be live without a PriceCatalog provider: %+v", hb)
+	}
+}
+
+func TestUpNoHeartbeatWithoutConfig(t *testing.T) {
+	mp := &mockProvisioner{}
+	orch, _, factory := testSetupWithProvisioner(t, config.StorageConfig{Enabled: false}, mp)
+
+	ctx := context.Background()
+	if _, err := orch.Up(ctx, "test-project", factory); err != nil {
+		t.Fatalf("Up() error: %v", err)
+	}
+	if hb := mp.provisionCalls[0].Heartbeat; hb.Hours != 0 {
+		t.Errorf("heartbeat should be disabled without config, got %+v", hb)
+	}
+}

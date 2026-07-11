@@ -124,3 +124,70 @@ func configureAppDomainsScript(domains []string, services []string, upstreams []
 	}
 	return script
 }
+
+// heartbeatScript returns a shell script that installs the on-VM Telegram
+// heartbeat: a reporting script plus a systemd timer that fires every
+// hb.Hours hours while the VM runs. Because it lives on the VM it works while
+// the local machine is offline and dies with the VM, so a reminder can never
+// outlive the resource it warns about.
+//
+// Cost provenance is preserved: a live provider rate renders without markers,
+// an offline table rate renders with est. markers, and no rate omits cost.
+func heartbeatScript(hb HeartbeatOpts) string {
+	costLine := `COST=""`
+	if hb.HourlyRateUSD > 0 {
+		format := `, ~$%.2f est. so far (~$` + fmt.Sprintf("%.4f", hb.HourlyRateUSD) + `/hr est.)`
+		if hb.RateIsLive {
+			format = `, $%.2f so far ($` + fmt.Sprintf("%.4f", hb.HourlyRateUSD) + `/hr)`
+		}
+		costLine = fmt.Sprintf(
+			`COST=$(awk -v s="$STARTED" -v n="$NOW" 'BEGIN { printf "%s", (n-s)/3600*%.6f }')`,
+			format, hb.HourlyRateUSD,
+		)
+	}
+
+	reporter := fmt.Sprintf(`#!/bin/sh
+STARTED=$(cat /var/lib/serverku/heartbeat-started)
+NOW=$(date +%%s)
+UPH=$(( (NOW - STARTED) / 3600 ))
+UPM=$(( ((NOW - STARTED) %% 3600) / 60 ))
+%s
+TEXT="serverku: %s still running -- up ${UPH}h${UPM}m${COST}. Stop with: serverku down %s"
+curl -fsS -m 10 "https://api.telegram.org/bot%s/sendMessage" \
+  -d chat_id="%s" --data-urlencode "text=${TEXT}" >/dev/null
+`, costLine, hb.ProjectName, hb.ProjectName, hb.BotToken, hb.ChatID)
+
+	return fmt.Sprintf(`set -e
+sudo mkdir -p /var/lib/serverku
+date +%%s | sudo tee /var/lib/serverku/heartbeat-started >/dev/null
+
+sudo tee /usr/local/bin/serverku-heartbeat >/dev/null <<'SERVERKU_HB'
+%s
+SERVERKU_HB
+sudo chmod 0700 /usr/local/bin/serverku-heartbeat
+
+sudo tee /etc/systemd/system/serverku-heartbeat.service >/dev/null <<'SERVERKU_HB'
+[Unit]
+Description=serverku Telegram heartbeat
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/serverku-heartbeat
+SERVERKU_HB
+
+sudo tee /etc/systemd/system/serverku-heartbeat.timer >/dev/null <<'SERVERKU_HB'
+[Unit]
+Description=serverku Telegram heartbeat timer
+
+[Timer]
+OnActiveSec=%dh
+OnUnitActiveSec=%dh
+
+[Install]
+WantedBy=timers.target
+SERVERKU_HB
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now serverku-heartbeat.timer
+`, reporter, hb.Hours, hb.Hours)
+}

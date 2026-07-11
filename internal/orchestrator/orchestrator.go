@@ -10,6 +10,7 @@ import (
 	"github.com/jufianto/serverku/internal/config"
 	"github.com/jufianto/serverku/internal/hooks"
 	"github.com/jufianto/serverku/internal/notify"
+	"github.com/jufianto/serverku/internal/pricing"
 	"github.com/jufianto/serverku/internal/provider"
 	"github.com/jufianto/serverku/internal/provisioner"
 )
@@ -319,6 +320,7 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		RouterEnabled:   cfg.Router.Enabled,
 		Domains:         cfg.Router.Domains,
 		StartupCommands: cfg.StartupCommands,
+		Heartbeat:       heartbeatOpts(ctx, cfg, cp, projectName),
 	}
 	if err := o.provisioner.Provision(ctx, provOpts); err != nil {
 		o.setErrorState(state, fmt.Sprintf("provisioning failed: %v", err))
@@ -672,6 +674,39 @@ func (o *Orchestrator) Backup(ctx context.Context, projectName, snapshotName str
 		SnapshotID:   snapshotID,
 		DiskName:     state.DiskName,
 	}, nil
+}
+
+// heartbeatOpts assembles the on-VM Telegram heartbeat settings from config.
+// The accrued-cost rate prefers the provider's live pricing API (PriceCatalog
+// capability) and falls back to the offline table, preserving provenance so
+// the heartbeat message marks estimates as est.
+func heartbeatOpts(ctx context.Context, cfg *config.ProjectConfig, cp provider.CloudProvider, projectName string) provisioner.HeartbeatOpts {
+	tg := cfg.Notifications.Telegram
+	if tg.HeartbeatHours <= 0 || tg.BotToken == "" || tg.ChatID == "" {
+		return provisioner.HeartbeatOpts{}
+	}
+
+	hb := provisioner.HeartbeatOpts{
+		Hours:       tg.HeartbeatHours,
+		ProjectName: projectName,
+		BotToken:    tg.BotToken,
+		ChatID:      tg.ChatID,
+	}
+
+	rate := pricing.TableRate(cfg)
+	if pc, ok := cp.(provider.PriceCatalog); ok {
+		if hourly, err := pc.VMHourlyRateUSD(ctx, cfg.VM.Size, cfg.Region, cfg.VM.Spot); err == nil {
+			rate = pricing.Rate{HourlyUSD: hourly, Live: true, Known: true}
+		} else {
+			log.Printf("[orchestrator] live rate lookup for heartbeat failed, using offline estimate: %v", err)
+		}
+	}
+	if rate.Known {
+		hb.HourlyRateUSD = rate.HourlyUSD
+		hb.RateIsLive = rate.Live
+	}
+
+	return hb
 }
 
 // setErrorState updates the project state to error status and saves it.

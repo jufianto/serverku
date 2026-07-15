@@ -95,6 +95,9 @@ Default base dir is `~/.serverku/` (override with `--config-dir`):
 - `projects/<name>.yaml` — user config
 - `state/<name>.json` — runtime state, reconciled by `status`
 - `keys/serverku_rsa{,.pub}` — managed SSH keypair, created by `init`
+- `credentials.yaml` — provider API tokens (secret), written 0600 by
+  `serverku setup`; a `provider → token` map (`Store.SaveCredential` /
+  `LoadCredential`). Kept out of `projects/` because that dir is shareable config.
 
 Project names are validated strictly: lowercase letters, digits, and hyphens only;
 no leading/trailing hyphen.
@@ -103,5 +106,13 @@ no leading/trailing hyphen.
 
 GCP provider construction (`internal/provider/gcp/gcp.go`) uses `compute.NewService(ctx)`,
 so local Application Default Credentials must already work for real provider calls.
-DigitalOcean uses `DIGITALOCEAN_TOKEN`.
+`serverku setup gcp` (`cmd/serverku/setup.go`) drives the `gcloud auth
+application-default login` flow and verifies via `ValidateCredentials`; it never
+handles OAuth itself.
+
+DigitalOcean tokens are resolved by `resolveDOToken()` (`cmd/serverku/lifecycle.go`):
+`DIGITALOCEAN_TOKEN` env var first, then `credentials.yaml`. The factory calls
+`digitalocean.NewWithToken(token)` with the resolved value; `digitalocean.New(ctx)`
+remains as the env-only path. `serverku setup digitalocean` prompts for the token,
+verifies it against the account API, and saves it via `Store.SaveCredential`.
 

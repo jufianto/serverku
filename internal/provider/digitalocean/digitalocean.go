@@ -18,19 +18,24 @@ type Provider struct {
 	client *godo.Client
 }
 
-// New creates a new DigitalOcean provider instance.
-// It requires the DIGITALOCEAN_TOKEN environment variable to be set.
+// New creates a new DigitalOcean provider instance from the
+// DIGITALOCEAN_TOKEN environment variable.
 func New(ctx context.Context) (*Provider, error) {
 	token := os.Getenv("DIGITALOCEAN_TOKEN")
 	if token == "" {
 		return nil, errors.New("DIGITALOCEAN_TOKEN environment variable is not set")
 	}
+	return NewWithToken(token)
+}
 
-	client := godo.NewFromToken(token)
-
-	return &Provider{
-		client: client,
-	}, nil
+// NewWithToken creates a new DigitalOcean provider instance from an explicit
+// API token. Callers resolve the token however they like (env var, saved
+// credentials file) and pass it here.
+func NewWithToken(token string) (*Provider, error) {
+	if token == "" {
+		return nil, errors.New("digitalocean token is empty")
+	}
+	return &Provider{client: godo.NewFromToken(token)}, nil
 }
 
 // CreateVM creates a new Droplet.

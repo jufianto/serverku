@@ -57,6 +57,7 @@ When done, tear it down. Pay only for storage when idle.`,
 	// Register subcommands
 	rootCmd.AddCommand(
 		newInitCmd(),
+		newSetupCmd(),
 		newCheckCmd(),
 		newUpCmd(),
 		newDeployCmd(),

@@ -57,6 +57,69 @@ func (s *Store) KeysDir() string {
 	return filepath.Join(s.baseDir, "keys")
 }
 
+// CredentialsPath returns the path to the secrets file holding provider API
+// tokens. It lives in the base dir (not projects/, which is shareable config)
+// and is written with owner-only 0600 permissions.
+func (s *Store) CredentialsPath() string {
+	return filepath.Join(s.baseDir, "credentials.yaml")
+}
+
+// SaveCredential stores a provider API token in the 0600 credentials file,
+// merging with any existing entries. The file mode is re-asserted on every
+// write so an existing loosely-permissioned file is tightened.
+func (s *Store) SaveCredential(provider, token string) error {
+	creds, err := s.loadCredentials()
+	if err != nil {
+		return err
+	}
+	creds[provider] = token
+
+	data, err := yaml.Marshal(creds)
+	if err != nil {
+		return fmt.Errorf("failed to encode credentials: %w", err)
+	}
+	path := s.CredentialsPath()
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("failed to write credentials: %w", err)
+	}
+	// WriteFile only applies the mode when creating; enforce it on an
+	// existing file too so the secret is never left world-readable.
+	if err := os.Chmod(path, 0600); err != nil {
+		return fmt.Errorf("failed to secure credentials file: %w", err)
+	}
+	return nil
+}
+
+// LoadCredential returns the stored token for a provider, or "" if the
+// credentials file or that entry does not exist.
+func (s *Store) LoadCredential(provider string) (string, error) {
+	creds, err := s.loadCredentials()
+	if err != nil {
+		return "", err
+	}
+	return creds[provider], nil
+}
+
+// loadCredentials reads the credentials file into a map, returning an empty
+// map when the file does not exist.
+func (s *Store) loadCredentials() (map[string]string, error) {
+	data, err := os.ReadFile(s.CredentialsPath())
+	if os.IsNotExist(err) {
+		return map[string]string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read credentials: %w", err)
+	}
+	creds := map[string]string{}
+	if err := yaml.Unmarshal(data, &creds); err != nil {
+		return nil, fmt.Errorf("failed to parse credentials: %w", err)
+	}
+	if creds == nil {
+		creds = map[string]string{}
+	}
+	return creds, nil
+}
+
 // ensureDirs creates the directory structure if it doesn't exist.
 func (s *Store) ensureDirs() error {
 	dirs := []string{

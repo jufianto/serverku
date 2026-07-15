@@ -183,12 +183,18 @@ if needed, optionally sets the quota project, and verifies access.`,
 }
 
 // verifyGCP confirms ADC work by making a cheap authenticated call. It needs a
-// project to check against; when none is given it tries gcloud's configured
-// default before giving up with guidance.
+// project to check against; when --project is not given it falls back to
+// gcloud's configured default -- but that default may be unrelated to what the
+// user wants (e.g. a work project while ADC is a personal account), so the
+// project's provenance is always stated and a fallback-project failure is
+// softened into guidance rather than a hard error.
 func verifyGCP(ctx context.Context, projectID string) error {
+	explicit := projectID != ""
 	if projectID == "" {
 		if p, err := gcloudCapture(ctx, "config", "get-value", "project"); err == nil && p != "" && p != "(unset)" {
 			projectID = p
+			fmt.Printf("No --project given; using gcloud's default project %q.\n", projectID)
+			fmt.Println("Pass --project <id> to check a different one (e.g. your personal project).")
 		}
 	}
 	if projectID == "" {
@@ -205,6 +211,18 @@ func verifyGCP(ctx context.Context, projectID string) error {
 	}
 	if err := prov.ValidateCredentials(ctx); err != nil {
 		fmt.Println("failed")
+		if !explicit {
+			// The project came from gcloud's default, not from the user. The
+			// ADC itself may be perfectly fine -- we likely just checked the
+			// wrong project. Guide instead of erroring out.
+			fmt.Printf("\nCould not access %q with the current account. That project came from your\n", projectID)
+			fmt.Println("gcloud default config, which may not be the one you want to deploy to.")
+			fmt.Println("Re-run with --project <your-project-id> to check the right project.")
+			if email, e := gcp.AuthenticatedEmail(ctx); e == nil && email != "" {
+				fmt.Printf("ADC are set and authenticated as %s.\n", email)
+			}
+			return nil
+		}
 		return fmt.Errorf("credential check failed for project %q: %w", projectID, err)
 	}
 	fmt.Println("ok")

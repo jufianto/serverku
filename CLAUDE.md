@@ -38,10 +38,12 @@ The dependency flow is: **CLI command (`cmd/serverku/`) → `Orchestrator` →
 `CloudProvider` + `Provisioner` + `Notifier`**. Commands wire concrete
 implementations; the orchestrator is provider-agnostic.
 
-- **`cmd/serverku/`** — Cobra commands (`init`, `lifecycle` for up/down/destroy,
-  `status`, `logs`, `ssh`, `tunnel`, `backup`). `lifecycle.go` holds `newProviderFactory()`,
+- **`cmd/serverku/`** — Cobra commands (`init`, `check`, `lifecycle` for
+  up/deploy/down/destroy, `status`, `logs`, `ssh`, `tunnel`, `backup`,
+  `restore`, `ntfy`, `notify`). `lifecycle.go` holds `newProviderFactory()`,
   which selects the provider by `cfg.Provider` (`gcp` or `digitalocean`), and
-  `buildNotifier()`, which assembles a multi-notifier from config.
+  `buildNotifier()`, which assembles a multi-notifier from config. `check.go`
+  runs `Orchestrator.Preflight` (no cloud resources created).
 - **`internal/orchestrator/`** — `Up`/`Down`/`Status`/`Destroy`. Owns the full
   lifecycle sequence and all state transitions. Takes a `ProviderFactory` so a
   provider is constructed per project from config. `Status` reconciles tracked

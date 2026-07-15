@@ -88,3 +88,23 @@ func TestMonthToDateUsageUSD(t *testing.T) {
 		t.Errorf("usage = %v, want 11.21", usd)
 	}
 }
+
+func TestValidateCredentials(t *testing.T) {
+	ok := pricingTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/account") {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"account": map[string]any{"status": "active", "email": "x@example.com"}})
+	})
+	if err := ok.ValidateCredentials(context.Background()); err != nil {
+		t.Errorf("ValidateCredentials: %v", err)
+	}
+
+	bad := pricingTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"id":"unauthorized","message":"Unable to authenticate you"}`))
+	})
+	if err := bad.ValidateCredentials(context.Background()); err == nil {
+		t.Error("expected error on 401")
+	}
+}

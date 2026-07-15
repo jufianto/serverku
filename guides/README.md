@@ -1,7 +1,7 @@
-# serverku Tutorials
+# serverku Guides
 
-Hands-on, blog-style walkthroughs that take you from zero to a running app —
-and back down to zero — using real open-source projects.
+Decision guides and hands-on, blog-style walkthroughs — from zero to a running
+app and back down to zero, using real open-source projects.
 
 ## The core idea
 
@@ -16,27 +16,27 @@ init ──► up ──► (use it: status / logs / ssh / tunnel) ──► dow
 You pay for the VM only between `up` and `down`. Persistent data lives on a
 block-storage disk that survives `down` and is only deleted by `destroy`.
 
-## Guides ([`guides/`](guides/))
+## Start here (concepts)
 
-Start here to understand the choices before you deploy:
+Read these before your first deploy:
 
 | Guide | What it covers |
 | --- | --- |
-| [Choosing your setup](guides/choosing-your-setup.md) | How to pick provider, region, VM size, spot, disk size, and `max_uptime_hours` — the "why these values?" decisions, tied to cost. |
+| [Setting up cloud credentials](setup-credentials.md) | How serverku authenticates to GCP and DigitalOcean — what you need, how `serverku setup` works, where credentials live, and keeping work/personal accounts separate. |
+| [Choosing your setup](choosing-your-setup.md) | How to pick provider, region, VM size, spot, disk size, and `max_uptime_hours` — the "why these values?" decisions, tied to cost. |
 
 ## Pick a tutorial
 
-Hands-on, blog-style walkthroughs (also in [`guides/`](guides/)):
-
 | Tutorial | App (language) | Provider | What it teaches |
 | --- | --- | --- | --- |
-| [1. Uptime Kuma in 10 minutes](guides/tutorial-uptime-kuma-digitalocean.md) | Uptime Kuma (JS/Node) | DigitalOcean | The minimal flow: one container, no domain, no disk. Your first `up`/`destroy`. |
-| [2. WordPress with HTTPS and persistent data](guides/tutorial-wordpress-digitalocean.md) | WordPress + MySQL (PHP) | DigitalOcean | The full production flow: persistent storage, Caddyku HTTPS, DNS automation, the `down`/`up` money-saving cycle. |
-| [3. Gitea on GCP spot instances](guides/tutorial-gitea-gcp.md) | Gitea (Go) | GCP | GCP auth and config, cheap spot/preemptible VMs, disk snapshots with `serverku backup`. |
-| [4. Notifications: never pay for a forgotten VM](guides/tutorial-notifications.md) | — | any | ntfy push with zero accounts, the auto-configuring Telegram wizard, and the on-VM still-running heartbeat. |
+| [1. Uptime Kuma in 10 minutes](tutorial-uptime-kuma-digitalocean.md) | Uptime Kuma (JS/Node) | DigitalOcean | The minimal flow: one container, no domain, no disk. Your first `up`/`destroy`. |
+| [2. WordPress with HTTPS and persistent data](tutorial-wordpress-digitalocean.md) | WordPress + MySQL (PHP) | DigitalOcean | The full production flow: persistent storage, Caddyku HTTPS, DNS automation, the `down`/`up` money-saving cycle. |
+| [3. Gitea on GCP spot instances](tutorial-gitea-gcp.md) | Gitea (Go) | GCP | GCP auth and config, cheap spot/preemptible VMs, disk snapshots with `serverku backup`. |
+| [4. Notifications: never pay for a forgotten VM](tutorial-notifications.md) | — | any | ntfy push with zero accounts, the auto-configuring Telegram wizard, and the on-VM still-running heartbeat. |
 
-New to serverku? Read [Choosing your setup](guides/choosing-your-setup.md), then
-do the tutorials in order — each one builds on concepts from the last.
+New to serverku? Read [Setting up cloud credentials](setup-credentials.md) and
+[Choosing your setup](choosing-your-setup.md), then do the tutorials in order —
+each one builds on concepts from the last.
 
 ## Before any tutorial
 

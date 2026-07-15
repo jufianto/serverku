@@ -68,6 +68,10 @@ go install github.com/jufianto/serverku/cmd/serverku@latest
 
 ## Authenticating with your cloud
 
+> For the full walkthrough — how auth works on each cloud, where credentials
+> live, and keeping work/personal accounts separate — see
+> **[Setting up cloud credentials](guides/setup-credentials.md)**.
+
 serverku never handles your cloud password — it reads credentials that already
 live on your machine. Set them up once with `serverku setup`, which prompts for
 what it needs and then makes a real authenticated call so you know it works
@@ -115,17 +119,20 @@ serverku's stored credentials — `setup` is a convenience, not a requirement.
 
 ## Guides & Tutorials
 
-[`docs/`](docs/README.md) has decision guides and hands-on walkthroughs.
-Not sure what VM size, disk, or provider to pick? Start with
-**[Choosing your setup](docs/guides/choosing-your-setup.md)** — it explains
-every config choice and how each maps to cost.
+[`guides/`](guides/README.md) has decision guides and hands-on walkthroughs.
+New here? Start with the two concept guides:
+
+- **[Setting up cloud credentials](guides/setup-credentials.md)** — how serverku
+  authenticates to GCP and DigitalOcean, and where credentials live.
+- **[Choosing your setup](guides/choosing-your-setup.md)** — how to pick provider,
+  VM size, disk, and spot, and how each maps to cost.
 
 Then learn by doing with real open-source apps, from beginner to advanced:
 
-1. [Uptime Kuma (JS) on DigitalOcean in 10 minutes](docs/guides/tutorial-uptime-kuma-digitalocean.md) — the minimal first deploy.
-2. [WordPress (PHP) with HTTPS, DNS automation, and persistent data](docs/guides/tutorial-wordpress-digitalocean.md) — the full production flow.
-3. [Gitea (Go) on GCP spot instances with snapshots](docs/guides/tutorial-gitea-gcp.md) — cheap interruptible compute done right.
-4. [Notifications: never pay for a forgotten VM](docs/guides/tutorial-notifications.md) — ntfy, the Telegram wizard, and the still-running heartbeat.
+1. [Uptime Kuma (JS) on DigitalOcean in 10 minutes](guides/tutorial-uptime-kuma-digitalocean.md) — the minimal first deploy.
+2. [WordPress (PHP) with HTTPS, DNS automation, and persistent data](guides/tutorial-wordpress-digitalocean.md) — the full production flow.
+3. [Gitea (Go) on GCP spot instances with snapshots](guides/tutorial-gitea-gcp.md) — cheap interruptible compute done right.
+4. [Notifications: never pay for a forgotten VM](guides/tutorial-notifications.md) — ntfy, the Telegram wizard, and the still-running heartbeat.
 
 ## Quick Start
 

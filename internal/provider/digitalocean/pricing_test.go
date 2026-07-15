@@ -114,7 +114,7 @@ func TestAccountEmail(t *testing.T) {
 		if !strings.HasSuffix(r.URL.Path, "/account") {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"account": map[string]any{"email": "you@example.com", "status": "active"},
 		})
 	})
@@ -131,7 +131,7 @@ func TestAccountEmail(t *testing.T) {
 func TestAccountEmail_BadToken(t *testing.T) {
 	p := pricingTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{"id": "unauthorized", "message": "Unable to authenticate"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "unauthorized", "message": "Unable to authenticate"})
 	})
 	if _, err := p.AccountEmail(context.Background()); err == nil {
 		t.Error("expected an error for an unauthorized token")

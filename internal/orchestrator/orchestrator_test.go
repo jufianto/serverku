@@ -25,9 +25,18 @@ type mockProvider struct {
 	attachDiskFunc    func(ctx context.Context, vmID string, diskID string) error
 	detachDiskFunc    func(ctx context.Context, vmID string, diskID string) error
 	snapshotDiskFunc  func(ctx context.Context, diskName string, snapshotName string) (string, error)
+	restoreDiskFunc   func(ctx context.Context, config provider.DiskConfig, snapshot string) (*provider.Disk, error)
 
 	// Track calls for assertions
 	calls []string
+}
+
+func (m *mockProvider) CreateDiskFromSnapshot(ctx context.Context, config provider.DiskConfig, snapshot string) (*provider.Disk, error) {
+	m.calls = append(m.calls, "CreateDiskFromSnapshot")
+	if m.restoreDiskFunc != nil {
+		return m.restoreDiskFunc(ctx, config, snapshot)
+	}
+	return &provider.Disk{ID: "restored-disk-1", Name: config.Name, Zone: config.Zone, SizeGB: config.SizeGB, Provider: "mock"}, nil
 }
 
 func (m *mockProvider) CreateVM(ctx context.Context, config provider.VMConfig) (*provider.VM, error) {
@@ -1128,5 +1137,102 @@ func TestDeployFailureLeavesStateRunning(t *testing.T) {
 	}
 	if state.Status != config.StatusRunning || state.ExternalIP != "1.2.3.4" {
 		t.Errorf("state must stay running after failed deploy, got %s/%s", state.Status, state.ExternalIP)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Restore
+// ---------------------------------------------------------------------------
+
+func TestRestore(t *testing.T) {
+	orch, mock, factory := testSetup(t, config.StorageConfig{
+		Enabled:   true,
+		SizeGB:    20,
+		MountPath: "/data",
+	})
+
+	// Stopped project with an existing (old) disk.
+	state := config.NewState("test-project", "gcp", "us-central1", "us-central1-a")
+	state.Status = config.StatusStopped
+	state.DiskName = "serverku-test-project-data"
+	state.DiskID = "old-disk"
+	if err := orch.store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := orch.Restore(context.Background(), "test-project", "snap-abc", "serverku-test-project-data-restored", false, factory)
+	if err != nil {
+		t.Fatalf("Restore() error: %v", err)
+	}
+	if res.NewDiskName != "serverku-test-project-data-restored" {
+		t.Errorf("NewDiskName = %q", res.NewDiskName)
+	}
+	if res.OldDeleted {
+		t.Error("old disk should be kept by default")
+	}
+	if !containsStr(mock.calls, "CreateDiskFromSnapshot") {
+		t.Errorf("expected CreateDiskFromSnapshot; calls: %v", mock.calls)
+	}
+	if containsStr(mock.calls, "DeleteDisk") {
+		t.Errorf("DeleteDisk must not be called without --delete-old; calls: %v", mock.calls)
+	}
+
+	// State now points at the restored disk.
+	got, err := orch.store.LoadState("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DiskName != "serverku-test-project-data-restored" || got.DiskID != "restored-disk-1" {
+		t.Errorf("state not repointed: %s / %s", got.DiskName, got.DiskID)
+	}
+}
+
+func TestRestoreDeleteOld(t *testing.T) {
+	orch, mock, factory := testSetup(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"})
+
+	state := config.NewState("test-project", "gcp", "us-central1", "us-central1-a")
+	state.Status = config.StatusStopped
+	state.DiskName = "old-disk-name"
+	state.DiskID = "old-disk"
+	if err := orch.store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := orch.Restore(context.Background(), "test-project", "snap-abc", "new-disk", true, factory)
+	if err != nil {
+		t.Fatalf("Restore() error: %v", err)
+	}
+	if !res.OldDeleted {
+		t.Error("expected old disk to be deleted with --delete-old")
+	}
+	if !containsStr(mock.calls, "DeleteDisk") {
+		t.Errorf("expected DeleteDisk; calls: %v", mock.calls)
+	}
+}
+
+func TestRestoreRejectsRunningProject(t *testing.T) {
+	orch, mock, factory := testSetup(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"})
+
+	state := config.NewState("test-project", "gcp", "us-central1", "us-central1-a")
+	state.Status = config.StatusRunning
+	state.VMName = "serverku-test-project"
+	state.DiskName = "d"
+	if err := orch.store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := orch.Restore(context.Background(), "test-project", "snap", "new", false, factory); err == nil {
+		t.Fatal("Restore() should reject a running project")
+	}
+	if containsStr(mock.calls, "CreateDiskFromSnapshot") {
+		t.Error("no disk should be created for a running project")
+	}
+}
+
+func TestRestoreRequiresStorage(t *testing.T) {
+	orch, _, factory := testSetup(t, config.StorageConfig{Enabled: false})
+
+	if _, err := orch.Restore(context.Background(), "test-project", "snap", "new", false, factory); err == nil {
+		t.Fatal("Restore() should fail when storage is disabled")
 	}
 }

@@ -67,6 +67,7 @@ When done, tear it down. Pay only for storage when idle.`,
 		newLogsCmd(),
 		newTunnelCmd(),
 		newBackupCmd(),
+		newRestoreCmd(),
 		newNtfyCmd(),
 		newNotifyCmd(),
 	)

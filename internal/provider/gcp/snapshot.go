@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 
+	"github.com/jufianto/serverku/internal/provider"
 	"google.golang.org/api/compute/v1"
 )
 
@@ -30,4 +31,47 @@ func (g *GCPProvider) SnapshotDisk(ctx context.Context, diskName, snapshotName s
 
 	log.Printf("[gcp] snapshot %q created (id: %d)", snapshotName, created.Id)
 	return strconv.FormatUint(created.Id, 10), nil
+}
+
+// CreateDiskFromSnapshot creates a new persistent disk restored from a
+// snapshot, referenced by its name.
+func (g *GCPProvider) CreateDiskFromSnapshot(ctx context.Context, cfg provider.DiskConfig, snapshot string) (*provider.Disk, error) {
+	zone := g.resolveZone(cfg.Zone)
+	projectID := g.resolveProjectID(cfg.ProjectID)
+
+	diskType := cfg.DiskType
+	if diskType == "" {
+		diskType = defaultDataDiskType
+	}
+
+	disk := &compute.Disk{
+		Name:           cfg.Name,
+		SizeGb:         cfg.SizeGB,
+		Type:           fmt.Sprintf("zones/%s/diskTypes/%s", zone, diskType),
+		SourceSnapshot: fmt.Sprintf("projects/%s/global/snapshots/%s", projectID, snapshot),
+	}
+
+	log.Printf("[gcp] creating disk %q from snapshot %q in zone %s", cfg.Name, snapshot, zone)
+
+	op, err := g.service.Disks.Insert(projectID, zone, disk).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create disk from snapshot %q: %w", snapshot, err)
+	}
+
+	if err := g.waitForZoneOperation(ctx, projectID, zone, op.Name); err != nil {
+		return nil, fmt.Errorf("failed waiting for disk restore: %w", err)
+	}
+
+	created, err := g.service.Disks.Get(projectID, zone, cfg.Name).Context(ctx).Do()
+	if err != nil {
+		return nil, fmt.Errorf("disk restored but failed to retrieve details: %w", err)
+	}
+
+	return &provider.Disk{
+		ID:       strconv.FormatUint(created.Id, 10),
+		Name:     created.Name,
+		Zone:     zone,
+		SizeGB:   created.SizeGb,
+		Provider: "gcp",
+	}, nil
 }

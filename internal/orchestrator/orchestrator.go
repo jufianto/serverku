@@ -167,7 +167,7 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		diskName := fmt.Sprintf("serverku-%s-data", projectName)
 		disk, err := cp.CreateDisk(ctx, provider.DiskConfig{
 			Name:      diskName,
-			Zone:      cfg.Zone,
+			Zone:      diskZone(cfg),
 			SizeGB:    int64(cfg.Storage.SizeGB),
 			DiskType:  "pd-standard",
 			ProjectID: cfg.ProjectID,
@@ -694,6 +694,16 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 	return nil
 }
 
+// diskZone returns the placement value for provider disk operations: the zone
+// when set (GCP disks are zonal), else the region (DigitalOcean volumes are
+// regional and DO projects have no zone).
+func diskZone(cfg *config.ProjectConfig) string {
+	if cfg.Zone != "" {
+		return cfg.Zone
+	}
+	return cfg.Region
+}
+
 // BackupResult contains the result of a successful Backup operation.
 type BackupResult struct {
 	SnapshotName string
@@ -783,6 +793,83 @@ func heartbeatOpts(ctx context.Context, cfg *config.ProjectConfig, cp provider.C
 	}
 
 	return hb
+}
+
+// RestoreResult contains the result of a successful Restore operation.
+type RestoreResult struct {
+	NewDiskName string
+	NewDiskID   string
+	OldDiskName string
+	OldDeleted  bool
+}
+
+// Restore creates a new disk from a snapshot and points the project at it.
+// The project must be stopped (a disk cannot be swapped under a running VM).
+// The previous disk is kept unless deleteOld is true; keeping it costs its
+// monthly storage fee but preserves a rollback path. newDiskName is supplied
+// by the caller (the CLI stamps it with a timestamp) so the orchestrator
+// stays deterministic and testable.
+func (o *Orchestrator) Restore(ctx context.Context, projectName, snapshot, newDiskName string, deleteOld bool, factory ProviderFactory) (*RestoreResult, error) {
+	cfg, err := o.store.LoadProject(projectName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load project: %w", err)
+	}
+
+	state, err := o.store.LoadState(projectName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load state: %w", err)
+	}
+
+	if !cfg.Storage.Enabled {
+		return nil, fmt.Errorf("project %q has no persistent storage to restore into", projectName)
+	}
+	if state.IsRunning() || state.VMName != "" {
+		return nil, fmt.Errorf("project %q is running; run `serverku down %s` before restoring", projectName, projectName)
+	}
+
+	cp, err := factory(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cloud provider: %w", err)
+	}
+
+	log.Printf("[orchestrator] restoring snapshot %q into new disk %q", snapshot, newDiskName)
+	disk, err := cp.CreateDiskFromSnapshot(ctx, provider.DiskConfig{
+		Name:      newDiskName,
+		Zone:      diskZone(cfg),
+		SizeGB:    int64(cfg.Storage.SizeGB),
+		DiskType:  "pd-standard",
+		ProjectID: cfg.ProjectID,
+	}, snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to restore snapshot: %w", err)
+	}
+
+	result := &RestoreResult{
+		NewDiskName: disk.Name,
+		NewDiskID:   disk.ID,
+		OldDiskName: state.DiskName,
+	}
+
+	// Point the project at the restored disk; the next `up` attaches it.
+	oldDisk := state.DiskName
+	state.DiskName = disk.Name
+	state.DiskID = disk.ID
+	if err := o.store.SaveState(state); err != nil {
+		return nil, fmt.Errorf("restored disk %q created but failed to save state: %w", disk.Name, err)
+	}
+
+	if deleteOld && oldDisk != "" {
+		log.Printf("[orchestrator] deleting old disk %q", oldDisk)
+		if err := cp.DeleteDisk(ctx, oldDisk); err != nil {
+			// Non-fatal: the restore succeeded; the old disk just lingers.
+			log.Printf("[orchestrator] warning: failed to delete old disk %q (delete it manually): %v", oldDisk, err)
+		} else {
+			result.OldDeleted = true
+		}
+	}
+
+	log.Printf("[orchestrator] project %q now uses disk %q", projectName, disk.Name)
+	return result, nil
 }
 
 // setErrorState updates the project state to error status and saves it.

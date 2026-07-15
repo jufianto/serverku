@@ -288,6 +288,7 @@ This removes cloud resources and local project state/config. Treat it as irrever
 | `serverku logs <project>` | Stream remote `docker compose logs -f`. |
 | `serverku tunnel <project> <local>:<remote>` | Open an SSH port-forwarding tunnel. |
 | `serverku backup <project>` | Snapshot the project's persistent disk. |
+| `serverku restore <project> <snapshot>` | Restore a disk from a snapshot and point the project at it. |
 | `serverku ntfy <project>` | Show how to subscribe to push notifications; `--test` sends a test message. |
 | `serverku notify setup <project>` | Interactive wizard: connect ntfy or Telegram and verify with a real test send. |
 | `serverku notify test <project>` | Send a test notification to every configured channel. |
@@ -475,8 +476,26 @@ Notes:
   quiesce or stop the workload first (e.g. `serverku down`, then `backup`).
 - The project must have `storage.enabled` and an existing disk (run `serverku up`
   at least once).
-- Restoring from a snapshot is not yet automated — create a volume/disk from the
-  snapshot in your provider console for now.
+
+### Restoring
+
+`serverku restore <project> <snapshot>` creates a new disk from a snapshot
+(by name or ID, as printed by `backup`) and points the project at it:
+
+```bash
+serverku down myapp                       # a disk can't be swapped under a running VM
+serverku restore myapp serverku-myapp-20260712-120000
+serverku up myapp                         # attaches the restored disk
+```
+
+Notes:
+
+- The project must be **stopped** first.
+- The previous disk is **kept by default** so you can roll back; pass
+  `--delete-old` to remove it (and stop paying for it) once you trust the
+  restore.
+- `--name` sets the restored disk's name (default
+  `serverku-<project>-data-<timestamp>`).
 
 ## Costs
 
@@ -637,7 +656,7 @@ See [`docs/development.md`](docs/development.md) for the contributor guide and o
   you want to contribute it.
 - [ ] `vm.max_uptime` kill switch — the heartbeat tells you a VM is still
   running; this one would act on it.
-- [ ] Scheduled/automatic backups.
+- [ ] Scheduled/automatic backups (the `backup`/`restore` primitives exist).
 
 ## Contributing
 

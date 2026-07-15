@@ -81,50 +81,37 @@ serverku setup gcp            # runs the Google login (ADC) flow and verifies it
 - **DigitalOcean** — the token is verified against the account API and saved to
   `~/.serverku/credentials.yaml` (owner-only). serverku uses it automatically;
   a `DIGITALOCEAN_TOKEN` environment variable, if set, always takes precedence.
-- **GCP** — `setup gcp` checks whether Application Default Credentials already
-  exist, runs `gcloud auth application-default login` if not, optionally sets
-  the quota project (`--project <id>`), and verifies access. It requires the
+- **GCP** — `setup gcp` runs the Google login flow, but stores the resulting
+  Application Default Credentials in serverku's **own** directory
+  (`~/.serverku/gcloud/`) instead of your system-wide gcloud config. It then
+  shows the account, lists the projects that account can see, lets you **pick
+  one**, and verifies Compute access. serverku points its GCP calls at those
+  credentials automatically. It requires the
   [gcloud CLI](https://cloud.google.com/sdk/docs/install); serverku drives the
   official flow rather than handling OAuth itself.
 
 Both flows **print the authenticated account** (`Authenticated as: you@example.com`)
-so you can confirm you're using the right identity before creating resources —
-`setup gcp` also shows the currently signed-in account when ADC already exist,
-so a wrong-account login is caught up front instead of surfacing later as a
-permission error.
+so you can confirm you're using the right identity before creating anything.
 
-### Using a different Google account (e.g. personal vs. work)
+### Keeping work and personal Google accounts separate
 
-If your ADC are logged in as the wrong Google account (say a work address, but
-you want to deploy under a personal one), you have two options:
+Because `setup gcp` keeps its credentials in serverku's own `~/.serverku/gcloud/`
+directory, it **does not touch your system-wide gcloud login**. So if your
+everyday `gcloud` is signed into a work account but you want serverku to deploy
+under a personal one, just run:
 
-- **Switch the default** — just log in again and pick the other account. This
-  overwrites the single default ADC file:
+```bash
+serverku setup gcp   # log in with your PERSONAL account, then pick a personal project
+```
 
-  ```bash
-  gcloud auth application-default login   # choose your personal account
-  serverku setup gcp --project YOUR_PERSONAL_PROJECT   # confirms the new identity
-  ```
+Your work `gcloud`/ADC stay exactly as they were, and serverku uses the personal
+credentials for all its operations. The project you pick is remembered, so
+`serverku init --provider gcp` pre-fills it.
 
-- **Keep both, isolated** — write the personal credentials to a separate file
-  and point serverku at it with `GOOGLE_APPLICATION_CREDENTIALS` (the only
-  location override the Go client honors — `CLOUDSDK_CONFIG` alone does **not**
-  work for serverku):
-
-  ```bash
-  CLOUDSDK_CONFIG="$HOME/.config/gcloud-personal" \
-    gcloud auth application-default login   # personal account, written to its own dir
-  export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud-personal/application_default_credentials.json"
-  serverku setup gcp --project YOUR_PERSONAL_PROJECT
-  ```
-
-  Keep that `export` scoped to where you run serverku (a project `.envrc`,
-  a shell profile) and your work ADC in the default location stay untouched.
-
-Already have credentials configured your own way (env var, service-account key
-via `GOOGLE_APPLICATION_CREDENTIALS`)? serverku picks those up too — `setup` is
-a convenience, not a requirement. `serverku check <project>` re-verifies
-credentials for an existing project at any time.
+**Advanced / bring-your-own:** if you set `GOOGLE_APPLICATION_CREDENTIALS`
+yourself (a user ADC file or a service-account key), that always wins over
+serverku's stored credentials — `setup` is a convenience, not a requirement.
+`serverku check <project>` re-verifies credentials for a project at any time.
 
 ## Tutorials
 
@@ -357,7 +344,7 @@ This removes cloud resources and local project state/config. Treat it as irrever
 | Command | Description |
 | --- | --- |
 | `serverku init <project>` | Create a project config and SSH keys. |
-| `serverku setup <provider>` | Set up and verify cloud credentials (`digitalocean` saves an API token; `gcp` runs the ADC login flow). |
+| `serverku setup <provider>` | Set up and verify cloud credentials (`digitalocean` saves an API token; `gcp` runs an isolated ADC login, lets you pick a project, and verifies it). |
 | `serverku check <project>` | Preflight: validate config, compose file, credentials, DNS — before spending anything. |
 | `serverku up <project>` | Create VM, attach storage, provision, sync, and deploy. |
 | `serverku deploy <project>` | Push code changes to the running VM: re-sync, rewrite compose, `compose up -d`. Same IP, seconds not minutes. |

@@ -26,6 +26,7 @@ func newProviderFactory() orchestrator.ProviderFactory {
 	return func(ctx context.Context, cfg *config.ProjectConfig) (provider.CloudProvider, error) {
 		switch cfg.Provider {
 		case "gcp":
+			resolveGCPCredentialEnv()
 			return gcp.New(ctx, cfg.ProjectID, cfg.Zone)
 		case "digitalocean":
 			token, err := resolveDOToken()
@@ -36,6 +37,24 @@ func newProviderFactory() orchestrator.ProviderFactory {
 		default:
 			return nil, fmt.Errorf("unsupported provider: %s", cfg.Provider)
 		}
+	}
+}
+
+// resolveGCPCredentialEnv points the Google client libraries at serverku's
+// isolated ADC (written by `serverku setup gcp` into ~/.serverku/gcloud/) when
+// the user has not set GOOGLE_APPLICATION_CREDENTIALS themselves. Precedence
+// mirrors DigitalOcean: a user-set value always wins; otherwise the isolated
+// ADC is used when present; otherwise the system default ADC is left untouched.
+func resolveGCPCredentialEnv() {
+	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") != "" {
+		return
+	}
+	if store == nil {
+		return
+	}
+	adc := store.GcloudADCPath()
+	if _, err := os.Stat(adc); err == nil {
+		os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", adc)
 	}
 }
 

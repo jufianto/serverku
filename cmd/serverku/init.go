@@ -6,8 +6,19 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/jufianto/serverku/internal/config"
+	"github.com/jufianto/serverku/internal/provider/gcp"
 	"github.com/spf13/cobra"
 )
+
+// defaultGCPProject returns the project chosen during `serverku setup gcp`
+// (recorded as the quota project in serverku's isolated ADC), or "" when setup
+// has not run. It lets init pre-fill the GCP project ID.
+func defaultGCPProject() string {
+	if store == nil {
+		return ""
+	}
+	return gcp.QuotaProjectFromADC(store.GcloudADCPath())
+}
 
 func newInitCmd() *cobra.Command {
 	var (
@@ -55,6 +66,15 @@ interactive prompts.`,
 			// config that fails at `up`.
 			if provider == "digitalocean" && !cmd.Flags().Changed("spot") {
 				spot = false
+			}
+
+			// Default the GCP project to the one chosen in `serverku setup gcp`
+			// so a configured user doesn't have to repeat it.
+			if provider == "gcp" && !cmd.Flags().Changed("project-id") {
+				if p := defaultGCPProject(); p != "" {
+					projectID = p
+					fmt.Printf("Using GCP project %q from `serverku setup gcp` (override with --project-id).\n", projectID)
+				}
 			}
 
 			// Non-interactive mode with flags
@@ -132,6 +152,9 @@ func runInteractiveInit(name string) error {
 		mountPath      string
 		composeFile    string
 	)
+
+	// Pre-fill the GCP project from `serverku setup gcp`, if it ran.
+	gcpProjectID = defaultGCPProject()
 
 	// Defaults that might change based on provider
 	defaultRegion := "asia-southeast1"

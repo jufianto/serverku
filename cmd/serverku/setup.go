@@ -1,13 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -17,32 +14,19 @@ import (
 )
 
 // gcloudRunner runs a gcloud subcommand with the terminal's stdio attached so
-// interactive flows (the OAuth browser prompt) work. It is a package variable
-// so tests can stub it without a real gcloud install.
-var gcloudRunner = func(ctx context.Context, args ...string) error {
+// interactive flows (the OAuth browser prompt) work. extraEnv is appended to
+// the process environment -- serverku passes CLOUDSDK_CONFIG so credentials
+// land in its own isolated directory. It is a package variable so tests can
+// stub it without a real gcloud install.
+var gcloudRunner = func(ctx context.Context, extraEnv []string, args ...string) error {
 	bin, err := exec.LookPath("gcloud")
 	if err != nil {
 		return errGcloudMissing
 	}
 	c := exec.CommandContext(ctx, bin, args...)
+	c.Env = append(os.Environ(), extraEnv...)
 	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return c.Run()
-}
-
-// gcloudCapture runs a gcloud subcommand and returns its trimmed stdout,
-// used for non-interactive reads like the configured default project.
-var gcloudCapture = func(ctx context.Context, args ...string) (string, error) {
-	bin, err := exec.LookPath("gcloud")
-	if err != nil {
-		return "", errGcloudMissing
-	}
-	var out bytes.Buffer
-	c := exec.CommandContext(ctx, bin, args...)
-	c.Stdout = &out
-	if err := c.Run(); err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(out.String()), nil
 }
 
 var errGcloudMissing = fmt.Errorf("gcloud not found in PATH. Install the Google Cloud CLI first: https://cloud.google.com/sdk/docs/install")
@@ -125,11 +109,17 @@ func newSetupGCPCmd() *cobra.Command {
 	var projectID string
 	cmd := &cobra.Command{
 		Use:   "gcp",
-		Short: "Set up Google Application Default Credentials (ADC) and verify",
+		Short: "Set up isolated GCP credentials (ADC), pick a project, and verify",
 		Long: `serverku authenticates to GCP with Application Default Credentials (ADC),
-which are created by the gcloud CLI -- serverku never handles your Google
-password. This command checks whether ADC already exist, runs the login flow
-if needed, optionally sets the quota project, and verifies access.`,
+created by the gcloud CLI -- serverku never handles your Google password.
+
+To keep work and personal accounts cleanly separated, this stores the
+credentials in serverku's own directory (~/.serverku/gcloud/) rather than your
+system-wide gcloud config, and points serverku's GCP calls at them
+automatically. Your existing gcloud setup is left untouched.
+
+The flow: log in, show the account, let you pick a project from the ones the
+account can see, remember it, and verify Compute access.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -138,135 +128,119 @@ if needed, optionally sets the quota project, and verifies access.`,
 				return errGcloudMissing
 			}
 
+			gdir := store.GcloudDir()
+			adc := store.GcloudADCPath()
+			if err := os.MkdirAll(gdir, 0700); err != nil {
+				return fmt.Errorf("could not create %s: %w", gdir, err)
+			}
+			// CLOUDSDK_CONFIG makes gcloud write ADC into serverku's dir, not
+			// the user's ~/.config/gcloud.
+			cloudsdkEnv := []string{"CLOUDSDK_CONFIG=" + gdir}
+			// Point serverku's own API calls (email, project list, verify) at
+			// the isolated ADC for the rest of this command.
+			os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", adc)
+
 			login := true
-			if path, ok := adcLocation(); ok {
-				fmt.Printf("Application Default Credentials already present: %s\n", path)
-				// Show who they belong to so a wrong-account login is caught
-				// here rather than surfacing later as a permission failure.
-				if email, err := gcp.AuthenticatedEmail(ctx); err == nil && email != "" {
-					fmt.Printf("Currently authenticated as: %s\n", email)
-				} else if err != nil {
-					fmt.Printf("(could not determine the signed-in account: %v)\n", err)
+			if _, err := os.Stat(adc); err == nil {
+				if email, e := gcp.AuthenticatedEmail(ctx); e == nil && email != "" {
+					fmt.Printf("serverku already has GCP credentials for: %s\n", email)
 				}
 				var relogin bool
 				if err := huh.NewForm(huh.NewGroup(
 					huh.NewConfirm().
-						Title("Re-run the Google login flow anyway?").
-						Description("Choose Yes to sign in as a different account; No keeps these credentials and just verifies them.").
+						Title("Log in again (e.g. as a different account)?").
+						Description("Choose No to keep the current credentials and just re-pick the project.").
 						Value(&relogin),
 				)).Run(); err != nil {
 					return err
 				}
 				login = relogin
-			} else {
-				fmt.Println("No Application Default Credentials found.")
 			}
 
 			if login {
-				fmt.Println("Launching the Google login flow (a browser window will open)...")
-				if err := gcloudRunner(ctx, "auth", "application-default", "login"); err != nil {
+				fmt.Printf("Launching the Google login flow (credentials saved to %s)...\n", gdir)
+				if err := gcloudRunner(ctx, cloudsdkEnv, "auth", "application-default", "login"); err != nil {
 					return fmt.Errorf("gcloud login failed: %w", err)
 				}
 			}
 
-			if projectID != "" {
-				if err := gcloudRunner(ctx, "auth", "application-default", "set-quota-project", projectID); err != nil {
-					fmt.Printf("warning: could not set quota project %q: %v\n", projectID, err)
+			email, err := gcp.AuthenticatedEmail(ctx)
+			if err != nil {
+				return fmt.Errorf("could not read the credentials just saved: %w", err)
+			}
+			fmt.Printf("Authenticated as: %s\n", email)
+
+			if projectID == "" {
+				projectID, err = chooseGCPProject(ctx)
+				if err != nil {
+					return err
 				}
 			}
+			if projectID == "" {
+				fmt.Println("No project selected. Re-run with --project <id> once you have one.")
+				return nil
+			}
 
-			return verifyGCP(ctx, projectID)
+			// Record the choice as the ADC quota project; QuotaProjectFromADC
+			// reads it back later so `serverku init` can default project_id.
+			if err := gcloudRunner(ctx, cloudsdkEnv, "auth", "application-default", "set-quota-project", projectID); err != nil {
+				fmt.Printf("warning: could not set quota project %q: %v\n", projectID, err)
+			}
+
+			fmt.Printf("Verifying Compute access to %q... ", projectID)
+			prov, err := gcp.New(ctx, projectID, "")
+			if err != nil {
+				fmt.Println("failed")
+				return err
+			}
+			if err := prov.ValidateCredentials(ctx); err != nil {
+				fmt.Println("failed")
+				return fmt.Errorf("cannot access project %q as %s: %w\n"+
+					"(check the project ID, and that the Compute Engine API and billing are enabled)",
+					projectID, email, err)
+			}
+			fmt.Println("ok")
+			fmt.Printf("GCP is ready. serverku will use %s (project %s) automatically.\n", email, projectID)
+			return nil
 		},
 	}
-	cmd.Flags().StringVar(&projectID, "project", "", "GCP project ID to set as the ADC quota project and verify access against")
+	cmd.Flags().StringVar(&projectID, "project", "", "GCP project ID to use (skips the interactive project picker)")
 	return cmd
 }
 
-// verifyGCP confirms ADC work by making a cheap authenticated call. It needs a
-// project to check against; when --project is not given it falls back to
-// gcloud's configured default -- but that default may be unrelated to what the
-// user wants (e.g. a work project while ADC is a personal account), so the
-// project's provenance is always stated and a fallback-project failure is
-// softened into guidance rather than a hard error.
-func verifyGCP(ctx context.Context, projectID string) error {
-	explicit := projectID != ""
-	if projectID == "" {
-		if p, err := gcloudCapture(ctx, "config", "get-value", "project"); err == nil && p != "" && p != "(unset)" {
-			projectID = p
-			fmt.Printf("No --project given; using gcloud's default project %q.\n", projectID)
-			fmt.Println("Pass --project <id> to check a different one (e.g. your personal project).")
-		}
-	}
-	if projectID == "" {
-		fmt.Println("ADC are set. Pass --project <id> (or run 'serverku check <project>')")
-		fmt.Println("to verify access against a specific GCP project.")
-		return nil
-	}
-
-	fmt.Printf("Verifying access to project %q... ", projectID)
-	prov, err := gcp.New(ctx, projectID, "")
+// chooseGCPProject lists the projects the active credentials can see and asks
+// the user to pick one. It returns "" (no error) when the account has no
+// visible projects.
+func chooseGCPProject(ctx context.Context) (string, error) {
+	fmt.Println("Fetching the projects this account can see...")
+	projects, err := gcp.ListProjects(ctx)
 	if err != nil {
-		fmt.Println("failed")
-		return err
+		return "", err
 	}
-	if err := prov.ValidateCredentials(ctx); err != nil {
-		fmt.Println("failed")
-		if !explicit {
-			// The project came from gcloud's default, not from the user. The
-			// ADC itself may be perfectly fine -- we likely just checked the
-			// wrong project. Guide instead of erroring out.
-			fmt.Printf("\nCould not access %q with the current account. That project came from your\n", projectID)
-			fmt.Println("gcloud default config, which may not be the one you want to deploy to.")
-			fmt.Println("Re-run with --project <your-project-id> to check the right project.")
-			if email, e := gcp.AuthenticatedEmail(ctx); e == nil && email != "" {
-				fmt.Printf("ADC are set and authenticated as %s.\n", email)
-			}
-			return nil
-		}
-		return fmt.Errorf("credential check failed for project %q: %w", projectID, err)
+	if len(projects) == 0 {
+		fmt.Println("No projects are visible to this account. Create one in the Cloud")
+		fmt.Println("Console (with billing + the Compute Engine API enabled), then re-run")
+		fmt.Println("with --project <id>.")
+		return "", nil
 	}
-	fmt.Println("ok")
-	if email, err := gcp.AuthenticatedEmail(ctx); err == nil && email != "" {
-		fmt.Printf("Authenticated as: %s\n", email)
-	}
-	fmt.Println("GCP is ready. serverku will use these credentials automatically.")
-	return nil
-}
 
-// adcLocation reports the Application Default Credentials location, if any:
-// the GOOGLE_APPLICATION_CREDENTIALS env var wins, else the well-known
-// gcloud path. The bool is false when neither exists.
-func adcLocation() (string, bool) {
-	if p := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); p != "" {
-		if _, err := os.Stat(p); err == nil {
-			return p, true
+	opts := make([]huh.Option[string], 0, len(projects))
+	for _, p := range projects {
+		label := p.ID
+		if p.Name != "" && p.Name != p.ID {
+			label = fmt.Sprintf("%s (%s)", p.Name, p.ID)
 		}
+		opts = append(opts, huh.NewOption(label, p.ID))
 	}
-	if p := wellKnownADCPath(); p != "" {
-		if _, err := os.Stat(p); err == nil {
-			return p, true
-		}
-	}
-	return "", false
-}
 
-// wellKnownADCPath returns the default ADC file path for the OS, matching how
-// the Go credential loader (golang.org/x/oauth2/google) resolves it: %APPDATA%
-// on Windows, else $HOME/.config/gcloud. Note the loader does NOT honor
-// CLOUDSDK_CONFIG, so neither does this -- to relocate credentials for
-// serverku, point GOOGLE_APPLICATION_CREDENTIALS at the file directly.
-func wellKnownADCPath() string {
-	const f = "application_default_credentials.json"
-	if runtime.GOOS == "windows" {
-		appdata := os.Getenv("APPDATA")
-		if appdata == "" {
-			return ""
-		}
-		return filepath.Join(appdata, "gcloud", f)
+	var chosen string
+	if err := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("Select the project serverku should deploy to").
+			Options(opts...).
+			Value(&chosen),
+	)).Run(); err != nil {
+		return "", err
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".config", "gcloud", f)
+	return chosen, nil
 }

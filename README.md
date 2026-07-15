@@ -304,6 +304,7 @@ This removes cloud resources and local project state/config. Treat it as irrever
 | `serverku status <project>` | Show project status and reconcile with provider. |
 | `serverku list` | List all projects with status and estimated costs. |
 | `serverku ssh <project>` | Open an interactive SSH shell. |
+| `serverku open <project> [domain\|service]` | Open the running app in your browser (Caddy domain if set, else `http://<ip>`). `--print` shows the URL only. |
 | `serverku logs <project>` | Stream remote `docker compose logs -f`. |
 | `serverku tunnel <project> <local>:<remote>` | Open an SSH port-forwarding tunnel. |
 | `serverku backup <project>` | Snapshot the project's persistent disk. |

@@ -340,3 +340,29 @@ func TestBackupWithoutStorageFails(t *testing.T) {
 		t.Errorf("expected 'no persistent storage' error, got: %q", errOut)
 	}
 }
+
+func TestFormatVersion(t *testing.T) {
+	cases := []struct {
+		name    string
+		version string
+		commit  string
+		date    string
+		dirty   bool
+		want    string
+	}{
+		{"release tag only", "v0.1.0", "", "", false, "v0.1.0"},
+		{"release with commit and date", "v0.1.0", "abcdef1234567890", "2026-07-15T10:00:00Z", false, "v0.1.0 (abcdef123456, 2026-07-15T10:00:00Z)"},
+		{"dev clean with commit", "dev", "abcdef1234567890", "", false, "dev (abcdef123456)"},
+		{"dev dirty with commit", "dev", "abcdef1234567890", "", true, "dev (abcdef123456-dirty)"},
+		{"dirty without commit", "dev", "", "", true, "dev (dirty)"},
+		{"short commit not truncated", "dev", "abc123", "", false, "dev (abc123)"},
+		{"date only", "dev", "", "2026-07-15T10:00:00Z", false, "dev (2026-07-15T10:00:00Z)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := formatVersion(tc.version, tc.commit, tc.date, tc.dirty); got != tc.want {
+				t.Errorf("formatVersion(%q,%q,%q,%v) = %q, want %q", tc.version, tc.commit, tc.date, tc.dirty, got, tc.want)
+			}
+		})
+	}
+}

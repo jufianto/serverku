@@ -48,6 +48,43 @@ What still needs real credentials: actual `up`/`down` against GCP or
 DigitalOcean. Use small instances and a throwaway project, and confirm
 cleanup in the provider console afterwards.
 
+## Versioning and releases
+
+serverku follows [semantic versioning](https://semver.org/) with a `v` prefix
+(`v0.1.0`). While the API and config format may still change, the major version
+stays at `0`; breaking changes bump the minor.
+
+`serverku --version` reports build metadata:
+
+- **Release binaries** (built by goreleaser on a tag) show the clean tag plus
+  commit and date, e.g. `v0.1.0 (a1b2c3d4e5f6, 2026-07-15T10:00:00Z)`.
+- **Local `go build`** shows `dev` plus the git revision and a `-dirty` marker
+  when the working tree has uncommitted changes — Go embeds this VCS info
+  automatically, so no build flags are needed to identify a dev binary.
+- **`go install ...@vX.Y.Z`** shows the module version.
+
+The `version`/`commit`/`date` variables live in `cmd/serverku/main.go`;
+goreleaser stamps them via `-ldflags`, and `resolveVersion()` fills any gaps
+from the embedded build info.
+
+### Cutting a release
+
+Releases are fully automated by `.github/workflows/release.yml` — pushing a
+`v*` tag runs the tests and then goreleaser (`.goreleaser.yaml`), which builds
+cross-platform binaries, checksums, and a GitHub Release.
+
+```bash
+# 1. make sure master is green and up to date
+git checkout master && git pull
+
+# 2. tag (annotated) and push the tag
+git tag -a v0.1.0 -m "v0.1.0"
+git push origin v0.1.0
+```
+
+Do a dry run without publishing anything with `goreleaser release --snapshot
+--clean` (requires the goreleaser CLI locally).
+
 ## Architecture notes
 
 See [`01-architecture.md`](01-architecture.md),

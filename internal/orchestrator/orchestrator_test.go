@@ -1236,3 +1236,128 @@ func TestRestoreRequiresStorage(t *testing.T) {
 		t.Fatal("Restore() should fail when storage is disabled")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Preflight
+// ---------------------------------------------------------------------------
+
+// credMockProvider adds the CredentialValidator capability to mockProvider.
+type credMockProvider struct {
+	*mockProvider
+	credErr error
+}
+
+func (m *credMockProvider) ValidateCredentials(ctx context.Context) error {
+	m.calls = append(m.calls, "ValidateCredentials")
+	return m.credErr
+}
+
+func preflightSetup(t *testing.T, mutate func(*config.ProjectConfig)) (*Orchestrator, ProviderFactory, *credMockProvider) {
+	t.Helper()
+	orch, mock, _ := testSetup(t, config.StorageConfig{Enabled: false})
+	cfg, err := orch.store.LoadProject("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mutate != nil {
+		mutate(cfg)
+		if err := orch.store.SaveProject(cfg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cm := &credMockProvider{mockProvider: mock}
+	factory := func(ctx context.Context, cfg *config.ProjectConfig) (provider.CloudProvider, error) {
+		return cm, nil
+	}
+	return orch, factory, cm
+}
+
+func findCheck(res *PreflightResult, name string) (PreflightCheck, bool) {
+	for _, c := range res.Checks {
+		if c.Name == name {
+			return c, true
+		}
+	}
+	return PreflightCheck{}, false
+}
+
+func TestPreflightAllPass(t *testing.T) {
+	dir := t.TempDir()
+	compose := dir + "/docker-compose.yml"
+	if err := os.WriteFile(compose, []byte("services:\n  web:\n    image: nginx\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	orch, factory, cm := preflightSetup(t, func(cfg *config.ProjectConfig) {
+		cfg.ComposeFile = compose
+		cfg.SyncDir = dir
+	})
+
+	res, err := orch.Preflight(context.Background(), "test-project", factory)
+	if err != nil {
+		t.Fatalf("Preflight: %v", err)
+	}
+	if !res.AllOK() {
+		t.Errorf("expected all checks to pass, got: %+v", res.Checks)
+	}
+	if !containsStr(cm.calls, "ValidateCredentials") {
+		t.Error("expected credentials to be checked via ValidateCredentials")
+	}
+	for _, name := range []string{"config", "compose file", "sync dir", "ssh keys", "credentials"} {
+		if c, ok := findCheck(res, name); !ok || !c.OK {
+			t.Errorf("check %q missing or failed: %+v", name, c)
+		}
+	}
+}
+
+func TestPreflightMissingComposeFile(t *testing.T) {
+	orch, factory, _ := preflightSetup(t, func(cfg *config.ProjectConfig) {
+		cfg.ComposeFile = "/does/not/exist/docker-compose.yml"
+	})
+
+	res, err := orch.Preflight(context.Background(), "test-project", factory)
+	if err != nil {
+		t.Fatalf("Preflight: %v", err)
+	}
+	if res.AllOK() {
+		t.Fatal("expected preflight to fail on missing compose file")
+	}
+	if c, _ := findCheck(res, "compose file"); c.OK {
+		t.Error("compose file check should have failed")
+	}
+}
+
+func TestPreflightBadCredentials(t *testing.T) {
+	orch, _, _ := preflightSetup(t, nil)
+	cm := &credMockProvider{mockProvider: &mockProvider{}, credErr: fmt.Errorf("401 unauthorized")}
+	factory := func(ctx context.Context, cfg *config.ProjectConfig) (provider.CloudProvider, error) {
+		return cm, nil
+	}
+
+	res, err := orch.Preflight(context.Background(), "test-project", factory)
+	if err != nil {
+		t.Fatalf("Preflight: %v", err)
+	}
+	if c, _ := findCheck(res, "credentials"); c.OK {
+		t.Error("credentials check should have failed")
+	}
+	if res.AllOK() {
+		t.Error("preflight should fail overall on bad credentials")
+	}
+}
+
+func TestPreflightDNSWithoutSupport(t *testing.T) {
+	// mockProvider does not implement DNSManager, so dns.enabled must fail.
+	orch, factory, _ := preflightSetup(t, func(cfg *config.ProjectConfig) {
+		cfg.DNS.Enabled = true
+		cfg.Router.Domains = []config.DomainConfig{{Domain: "x.example.com", Service: "web", Upstream: "web:80"}}
+	})
+
+	res, err := orch.Preflight(context.Background(), "test-project", factory)
+	if err != nil {
+		t.Fatalf("Preflight: %v", err)
+	}
+	if c, ok := findCheck(res, "dns"); !ok || c.OK {
+		t.Errorf("dns check should be present and failing: %+v", c)
+	}
+}

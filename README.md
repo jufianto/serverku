@@ -220,6 +220,24 @@ router:
 
 ### 4. Bring the server online
 
+Preflight first — this creates nothing, it just verifies the config, the
+compose file, your cloud credentials, and DNS support so `up` doesn't fail
+halfway through after already creating a billable VM:
+
+```bash
+serverku check myapp
+```
+
+```text
+  ✓ config        valid
+  ✓ compose file  ./myapp/docker-compose.yml
+  ✓ sync dir      ./myapp
+  ✓ ssh keys      present
+  ✓ credentials   authenticated
+```
+
+Then bring it up:
+
 ```bash
 serverku up myapp
 ```
@@ -278,6 +296,7 @@ This removes cloud resources and local project state/config. Treat it as irrever
 | Command | Description |
 | --- | --- |
 | `serverku init <project>` | Create a project config and SSH keys. |
+| `serverku check <project>` | Preflight: validate config, compose file, credentials, DNS — before spending anything. |
 | `serverku up <project>` | Create VM, attach storage, provision, sync, and deploy. |
 | `serverku deploy <project>` | Push code changes to the running VM: re-sync, rewrite compose, `compose up -d`. Same IP, seconds not minutes. |
 | `serverku down <project>` | Destroy VM while preserving persistent storage. Use `-f/--force` to skip the confirmation prompt. |

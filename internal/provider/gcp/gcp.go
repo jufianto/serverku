@@ -584,3 +584,12 @@ func isNotFoundErr(err error) bool {
 
 func boolPtr(b bool) *bool       { return &b }
 func stringPtr(s string) *string { return &s }
+
+// ValidateCredentials verifies Application Default Credentials and project
+// access with a cheap regions list (capped to one result).
+func (g *GCPProvider) ValidateCredentials(ctx context.Context) error {
+	if _, err := g.service.Regions.List(g.projectID).MaxResults(1).Context(ctx).Do(); err != nil {
+		return fmt.Errorf("gcp credentials check failed: %w", err)
+	}
+	return nil
+}

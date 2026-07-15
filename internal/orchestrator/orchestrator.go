@@ -13,6 +13,7 @@ import (
 	"github.com/jufianto/serverku/internal/pricing"
 	"github.com/jufianto/serverku/internal/provider"
 	"github.com/jufianto/serverku/internal/provisioner"
+	"gopkg.in/yaml.v3"
 )
 
 // HookRunner runs a project's local lifecycle hook commands. It is an interface
@@ -793,6 +794,120 @@ func heartbeatOpts(ctx context.Context, cfg *config.ProjectConfig, cp provider.C
 	}
 
 	return hb
+}
+
+// PreflightCheck is the outcome of one preflight check.
+type PreflightCheck struct {
+	Name   string
+	OK     bool
+	Detail string // failure reason, or a short note on success
+}
+
+// PreflightResult aggregates all preflight checks for a project.
+type PreflightResult struct {
+	Checks []PreflightCheck
+}
+
+// AllOK reports whether every check passed.
+func (r *PreflightResult) AllOK() bool {
+	for _, c := range r.Checks {
+		if !c.OK {
+			return false
+		}
+	}
+	return true
+}
+
+// Preflight verifies everything that can be checked before `up` creates a
+// billable resource: config validity, the compose file, the sync dir, the SSH
+// keypair, provider credentials, and DNS capability. It runs every check
+// (rather than stopping at the first failure) so a single run surfaces all
+// problems. It creates no cloud resources.
+func (o *Orchestrator) Preflight(ctx context.Context, projectName string, factory ProviderFactory) (*PreflightResult, error) {
+	cfg, err := o.store.LoadProject(projectName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load project: %w", err)
+	}
+
+	res := &PreflightResult{}
+	add := func(name string, err error, okDetail string) {
+		if err != nil {
+			res.Checks = append(res.Checks, PreflightCheck{Name: name, OK: false, Detail: err.Error()})
+		} else {
+			res.Checks = append(res.Checks, PreflightCheck{Name: name, OK: true, Detail: okDetail})
+		}
+	}
+
+	// Config is well-formed.
+	add("config", cfg.Validate(), "valid")
+
+	// Compose file exists and is parseable YAML.
+	if cfg.ComposeFile != "" {
+		add("compose file", checkComposeFile(cfg.ComposeFile), cfg.ComposeFile)
+	}
+
+	// Sync dir exists locally.
+	if cfg.SyncDir != "" {
+		add("sync dir", checkDir(cfg.SyncDir), cfg.SyncDir)
+	}
+
+	// SSH keypair is present (or can be generated).
+	_, _, keyErr := o.store.EnsureSSHKeys()
+	add("ssh keys", keyErr, "present")
+
+	// Provider credentials authenticate. Constructing the provider verifies
+	// they are present; ValidateCredentials (if supported) verifies they work.
+	cp, cpErr := factory(ctx, cfg)
+	if cpErr != nil {
+		add("credentials", cpErr, "")
+	} else if cv, ok := cp.(provider.CredentialValidator); ok {
+		add("credentials", cv.ValidateCredentials(ctx), "authenticated")
+	} else {
+		add("credentials", nil, "client constructed (no live check for this provider)")
+	}
+
+	// DNS automation requires a provider that supports it (up fails fast
+	// otherwise), so catch that here instead of after the VM exists.
+	if cfg.DNS.Enabled && cpErr == nil {
+		if _, ok := cp.(provider.DNSManager); ok {
+			add("dns", nil, fmt.Sprintf("%d domain(s), provider supports DNS", len(cfg.Router.Domains)))
+		} else {
+			add("dns", fmt.Errorf("dns.enabled but provider %q does not support DNS automation", cfg.Provider), "")
+		}
+	}
+
+	return res, nil
+}
+
+// checkComposeFile verifies the compose file exists and is parseable YAML.
+func checkComposeFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("cannot read compose file: %w", err)
+	}
+	if len(data) == 0 {
+		return fmt.Errorf("compose file is empty")
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return fmt.Errorf("compose file is not valid YAML: %w", err)
+	}
+	if _, ok := doc["services"]; !ok {
+		return fmt.Errorf("compose file has no 'services' section")
+	}
+	return nil
+}
+
+// checkDir verifies a path exists and is a directory.
+func checkDir(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("cannot stat: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("not a directory")
+	}
+	return nil
 }
 
 // RestoreResult contains the result of a successful Restore operation.

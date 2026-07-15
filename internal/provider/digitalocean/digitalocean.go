@@ -398,3 +398,11 @@ func (p *Provider) DeleteDisk(ctx context.Context, diskName string) error {
 
 	return nil
 }
+
+// ValidateCredentials verifies the DIGITALOCEAN_TOKEN by fetching the account.
+func (p *Provider) ValidateCredentials(ctx context.Context) error {
+	if _, _, err := p.client.Account.Get(ctx); err != nil {
+		return fmt.Errorf("digitalocean credentials check failed: %w", err)
+	}
+	return nil
+}

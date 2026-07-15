@@ -76,6 +76,17 @@ type FirewallManager interface {
 	DeleteFirewall(ctx context.Context, projectName string) error
 }
 
+// CredentialValidator is an optional capability implemented by cloud
+// providers that can verify their credentials with a lightweight
+// authenticated API call. `serverku check` uses it to catch bad or missing
+// credentials before any billable resource is created.
+type CredentialValidator interface {
+	// ValidateCredentials makes a cheap authenticated request and returns an
+	// error if the provider's credentials are missing, invalid, or lack
+	// access.
+	ValidateCredentials(ctx context.Context) error
+}
+
 // PriceCatalog is an optional capability implemented by cloud providers that
 // can report real VM pricing from the cloud's own pricing API. Callers fall
 // back to the offline pricing tables (clearly labeled as estimates) when the

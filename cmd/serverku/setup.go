@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -230,16 +232,23 @@ func adcLocation() (string, bool) {
 	return "", false
 }
 
-// wellKnownADCPath returns the default ADC file path for the OS, or "" if the
-// home directory cannot be determined.
+// wellKnownADCPath returns the default ADC file path for the OS, matching how
+// the Go credential loader (golang.org/x/oauth2/google) resolves it: %APPDATA%
+// on Windows, else $HOME/.config/gcloud. Note the loader does NOT honor
+// CLOUDSDK_CONFIG, so neither does this -- to relocate credentials for
+// serverku, point GOOGLE_APPLICATION_CREDENTIALS at the file directly.
 func wellKnownADCPath() string {
-	// gcloud honors CLOUDSDK_CONFIG for a relocated config directory.
-	if cfg := os.Getenv("CLOUDSDK_CONFIG"); cfg != "" {
-		return cfg + "/application_default_credentials.json"
+	const f = "application_default_credentials.json"
+	if runtime.GOOS == "windows" {
+		appdata := os.Getenv("APPDATA")
+		if appdata == "" {
+			return ""
+		}
+		return filepath.Join(appdata, "gcloud", f)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return home + "/.config/gcloud/application_default_credentials.json"
+	return filepath.Join(home, ".config", "gcloud", f)
 }

@@ -93,6 +93,34 @@ so you can confirm you're using the right identity before creating resources —
 so a wrong-account login is caught up front instead of surfacing later as a
 permission error.
 
+### Using a different Google account (e.g. personal vs. work)
+
+If your ADC are logged in as the wrong Google account (say a work address, but
+you want to deploy under a personal one), you have two options:
+
+- **Switch the default** — just log in again and pick the other account. This
+  overwrites the single default ADC file:
+
+  ```bash
+  gcloud auth application-default login   # choose your personal account
+  serverku setup gcp --project YOUR_PERSONAL_PROJECT   # confirms the new identity
+  ```
+
+- **Keep both, isolated** — write the personal credentials to a separate file
+  and point serverku at it with `GOOGLE_APPLICATION_CREDENTIALS` (the only
+  location override the Go client honors — `CLOUDSDK_CONFIG` alone does **not**
+  work for serverku):
+
+  ```bash
+  CLOUDSDK_CONFIG="$HOME/.config/gcloud-personal" \
+    gcloud auth application-default login   # personal account, written to its own dir
+  export GOOGLE_APPLICATION_CREDENTIALS="$HOME/.config/gcloud-personal/application_default_credentials.json"
+  serverku setup gcp --project YOUR_PERSONAL_PROJECT
+  ```
+
+  Keep that `export` scoped to where you run serverku (a project `.envrc`,
+  a shell profile) and your work ADC in the default location stay untouched.
+
 Already have credentials configured your own way (env var, service-account key
 via `GOOGLE_APPLICATION_CREDENTIALS`)? serverku picks those up too — `setup` is
 a convenience, not a requirement. `serverku check <project>` re-verifies

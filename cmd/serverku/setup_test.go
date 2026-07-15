@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/jufianto/serverku/internal/config"
@@ -78,8 +79,8 @@ func TestADCLocation_EnvVarWins(t *testing.T) {
 
 func TestADCLocation_EnvVarPointsAtMissingFile(t *testing.T) {
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", filepath.Join(t.TempDir(), "nope.json"))
-	// Point the well-known path at an empty config dir so nothing is found.
-	t.Setenv("CLOUDSDK_CONFIG", t.TempDir())
+	// Point HOME at an empty dir so the well-known path finds nothing either.
+	t.Setenv("HOME", t.TempDir())
 
 	if path, ok := adcLocation(); ok {
 		t.Errorf("adcLocation() = (%q, true), want not found", path)
@@ -87,11 +88,17 @@ func TestADCLocation_EnvVarPointsAtMissingFile(t *testing.T) {
 }
 
 func TestADCLocation_WellKnownPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("well-known path uses %APPDATA% on Windows")
+	}
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
-	cfgDir := t.TempDir()
-	t.Setenv("CLOUDSDK_CONFIG", cfgDir)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 
-	want := filepath.Join(cfgDir, "application_default_credentials.json")
+	want := filepath.Join(home, ".config", "gcloud", "application_default_credentials.json")
+	if err := os.MkdirAll(filepath.Dir(want), 0755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(want, []byte("{}"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -105,9 +112,13 @@ func TestADCLocation_WellKnownPath(t *testing.T) {
 	}
 }
 
-func TestWellKnownADCPath_HonorsCloudSDKConfig(t *testing.T) {
-	t.Setenv("CLOUDSDK_CONFIG", "/custom/gcloud")
-	want := "/custom/gcloud/application_default_credentials.json"
+func TestWellKnownADCPath_MatchesGoLoader(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("well-known path uses %APPDATA% on Windows")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	want := filepath.Join(home, ".config", "gcloud", "application_default_credentials.json")
 	if got := wellKnownADCPath(); got != want {
 		t.Errorf("wellKnownADCPath() = %q, want %q", got, want)
 	}

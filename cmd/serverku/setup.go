@@ -97,11 +97,17 @@ func newSetupDOCmd() *cobra.Command {
 				fmt.Println("failed")
 				return err
 			}
-			if err := prov.ValidateCredentials(cmd.Context()); err != nil {
+			// AccountEmail both validates the token and tells us which
+			// account it belongs to, so the user can confirm it's the right one.
+			email, err := prov.AccountEmail(cmd.Context())
+			if err != nil {
 				fmt.Println("failed")
 				return fmt.Errorf("token rejected by DigitalOcean: %w", err)
 			}
 			fmt.Println("ok")
+			if email != "" {
+				fmt.Printf("Authenticated as: %s\n", email)
+			}
 
 			if err := store.SaveCredential("digitalocean", token); err != nil {
 				return err
@@ -133,11 +139,18 @@ if needed, optionally sets the quota project, and verifies access.`,
 			login := true
 			if path, ok := adcLocation(); ok {
 				fmt.Printf("Application Default Credentials already present: %s\n", path)
+				// Show who they belong to so a wrong-account login is caught
+				// here rather than surfacing later as a permission failure.
+				if email, err := gcp.AuthenticatedEmail(ctx); err == nil && email != "" {
+					fmt.Printf("Currently authenticated as: %s\n", email)
+				} else if err != nil {
+					fmt.Printf("(could not determine the signed-in account: %v)\n", err)
+				}
 				var relogin bool
 				if err := huh.NewForm(huh.NewGroup(
 					huh.NewConfirm().
 						Title("Re-run the Google login flow anyway?").
-						Description("Choose No to keep the existing credentials and just verify them.").
+						Description("Choose Yes to sign in as a different account; No keeps these credentials and just verifies them.").
 						Value(&relogin),
 				)).Run(); err != nil {
 					return err
@@ -193,6 +206,9 @@ func verifyGCP(ctx context.Context, projectID string) error {
 		return fmt.Errorf("credential check failed for project %q: %w", projectID, err)
 	}
 	fmt.Println("ok")
+	if email, err := gcp.AuthenticatedEmail(ctx); err == nil && email != "" {
+		fmt.Printf("Authenticated as: %s\n", email)
+	}
 	fmt.Println("GCP is ready. serverku will use these credentials automatically.")
 	return nil
 }

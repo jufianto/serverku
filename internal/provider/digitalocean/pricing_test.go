@@ -108,3 +108,32 @@ func TestValidateCredentials(t *testing.T) {
 		t.Error("expected error on 401")
 	}
 }
+
+func TestAccountEmail(t *testing.T) {
+	p := pricingTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/account") {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"account": map[string]any{"email": "you@example.com", "status": "active"},
+		})
+	})
+
+	email, err := p.AccountEmail(context.Background())
+	if err != nil {
+		t.Fatalf("AccountEmail: %v", err)
+	}
+	if email != "you@example.com" {
+		t.Errorf("AccountEmail = %q, want you@example.com", email)
+	}
+}
+
+func TestAccountEmail_BadToken(t *testing.T) {
+	p := pricingTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{"id": "unauthorized", "message": "Unable to authenticate"})
+	})
+	if _, err := p.AccountEmail(context.Background()); err == nil {
+		t.Error("expected an error for an unauthorized token")
+	}
+}

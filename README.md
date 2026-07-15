@@ -87,6 +87,12 @@ serverku setup gcp            # runs the Google login (ADC) flow and verifies it
   [gcloud CLI](https://cloud.google.com/sdk/docs/install); serverku drives the
   official flow rather than handling OAuth itself.
 
+Both flows **print the authenticated account** (`Authenticated as: you@example.com`)
+so you can confirm you're using the right identity before creating resources —
+`setup gcp` also shows the currently signed-in account when ADC already exist,
+so a wrong-account login is caught up front instead of surfacing later as a
+permission error.
+
 Already have credentials configured your own way (env var, service-account key
 via `GOOGLE_APPLICATION_CREDENTIALS`)? serverku picks those up too — `setup` is
 a convenience, not a requirement. `serverku check <project>` re-verifies

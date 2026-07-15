@@ -63,8 +63,8 @@ implementations; the orchestrator is provider-agnostic.
   `FirewallManager` is another optional capability (same type-assertion pattern):
   `up` ensures the project's firewall rule before creating the VM and `destroy`
   removes it best-effort. Only GCP implements it (DigitalOcean droplets are open
-  by default). `SnapshotDisk` (part of `CloudProvider`) backs the `serverku
-  backup` command.
+  by default). `SnapshotDisk` / `CreateDiskFromSnapshot` (part of
+  `CloudProvider`) back the `serverku backup` and `serverku restore` commands.
 - **`internal/provisioner/`** — runs provisioning over SSH: installs Docker, mounts
   storage, syncs the project, embeds the Compose file into a remote script, optionally
   installs/inits Caddyku, then `docker compose up -d`. `scripts.go` builds the remote

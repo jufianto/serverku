@@ -43,6 +43,11 @@ type CloudProvider interface {
 	// SnapshotDisk creates a snapshot of a persistent disk and returns the
 	// provider-specific snapshot identifier.
 	SnapshotDisk(ctx context.Context, diskName string, snapshotName string) (string, error)
+
+	// CreateDiskFromSnapshot creates a new persistent disk restored from a
+	// snapshot, referenced by its name (as printed by `serverku backup`) or
+	// provider-specific ID.
+	CreateDiskFromSnapshot(ctx context.Context, config DiskConfig, snapshot string) (*Disk, error)
 }
 
 // DNSManager is an optional capability implemented by cloud providers that can

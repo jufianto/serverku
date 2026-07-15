@@ -263,3 +263,68 @@ func TestStore_DeleteState(t *testing.T) {
 		t.Error("expected empty VM ID after state deletion")
 	}
 }
+
+func TestSaveAndLoadCredential(t *testing.T) {
+	s := newTestStore(t)
+
+	// Missing file / entry returns empty, not an error.
+	if got, err := s.LoadCredential("digitalocean"); err != nil || got != "" {
+		t.Fatalf("LoadCredential on empty store = (%q, %v), want (\"\", nil)", got, err)
+	}
+
+	if err := s.SaveCredential("digitalocean", "dop_v1_secret"); err != nil {
+		t.Fatalf("SaveCredential: %v", err)
+	}
+	got, err := s.LoadCredential("digitalocean")
+	if err != nil {
+		t.Fatalf("LoadCredential: %v", err)
+	}
+	if got != "dop_v1_secret" {
+		t.Errorf("LoadCredential = %q, want dop_v1_secret", got)
+	}
+
+	// A second provider merges without clobbering the first.
+	if err := s.SaveCredential("other", "abc"); err != nil {
+		t.Fatalf("SaveCredential (merge): %v", err)
+	}
+	if got, _ := s.LoadCredential("digitalocean"); got != "dop_v1_secret" {
+		t.Errorf("first credential lost after saving a second: got %q", got)
+	}
+	if got, _ := s.LoadCredential("other"); got != "abc" {
+		t.Errorf("second credential = %q, want abc", got)
+	}
+}
+
+func TestSaveCredential_FileMode0600(t *testing.T) {
+	s := newTestStore(t)
+
+	// Pre-create the file world-readable to prove SaveCredential tightens it.
+	if err := os.WriteFile(s.CredentialsPath(), []byte("{}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveCredential("digitalocean", "tok"); err != nil {
+		t.Fatalf("SaveCredential: %v", err)
+	}
+
+	info, err := os.Stat(s.CredentialsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Errorf("credentials file mode = %o, want 600", perm)
+	}
+}
+
+func TestSaveCredential_Overwrite(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.SaveCredential("digitalocean", "old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveCredential("digitalocean", "new"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.LoadCredential("digitalocean"); got != "new" {
+		t.Errorf("LoadCredential = %q, want new (overwrite failed)", got)
+	}
+}

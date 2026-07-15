@@ -75,3 +75,16 @@ func TestGetDropletPublicIPv4(t *testing.T) {
 		t.Error("expected error when no public IP is available")
 	}
 }
+
+func TestNewWithToken(t *testing.T) {
+	if _, err := NewWithToken(""); err == nil {
+		t.Error("expected error for empty token")
+	}
+	p, err := NewWithToken("dop_v1_token")
+	if err != nil {
+		t.Fatalf("NewWithToken: %v", err)
+	}
+	if p == nil || p.client == nil {
+		t.Error("expected a provider with an initialized client")
+	}
+}

@@ -60,10 +60,37 @@ go install github.com/jufianto/serverku/cmd/serverku@latest
 - `ssh` installed locally.
 - `rsync` installed locally when using `sync_dir`.
 - A cloud account for real deployments.
-- GCP Application Default Credentials for GCP deployments.
-- `DIGITALOCEAN_TOKEN` for DigitalOcean deployments.
+- Cloud credentials for real deployments — run `serverku setup <provider>` (see
+  [Authenticating with your cloud](#authenticating-with-your-cloud)). GCP uses
+  Application Default Credentials; DigitalOcean uses an API token.
 - A Docker Compose project to deploy.
 - Optional: a domain pointing at the VM IP when using Caddyku routing.
+
+## Authenticating with your cloud
+
+serverku never handles your cloud password — it reads credentials that already
+live on your machine. Set them up once with `serverku setup`, which prompts for
+what it needs and then makes a real authenticated call so you know it works
+*before* you create anything billable:
+
+```bash
+serverku setup digitalocean   # paste an API token; it's verified and saved (0600)
+serverku setup gcp            # runs the Google login (ADC) flow and verifies it
+```
+
+- **DigitalOcean** — the token is verified against the account API and saved to
+  `~/.serverku/credentials.yaml` (owner-only). serverku uses it automatically;
+  a `DIGITALOCEAN_TOKEN` environment variable, if set, always takes precedence.
+- **GCP** — `setup gcp` checks whether Application Default Credentials already
+  exist, runs `gcloud auth application-default login` if not, optionally sets
+  the quota project (`--project <id>`), and verifies access. It requires the
+  [gcloud CLI](https://cloud.google.com/sdk/docs/install); serverku drives the
+  official flow rather than handling OAuth itself.
+
+Already have credentials configured your own way (env var, service-account key
+via `GOOGLE_APPLICATION_CREDENTIALS`)? serverku picks those up too — `setup` is
+a convenience, not a requirement. `serverku check <project>` re-verifies
+credentials for an existing project at any time.
 
 ## Tutorials
 
@@ -296,6 +323,7 @@ This removes cloud resources and local project state/config. Treat it as irrever
 | Command | Description |
 | --- | --- |
 | `serverku init <project>` | Create a project config and SSH keys. |
+| `serverku setup <provider>` | Set up and verify cloud credentials (`digitalocean` saves an API token; `gcp` runs the ADC login flow). |
 | `serverku check <project>` | Preflight: validate config, compose file, credentials, DNS — before spending anything. |
 | `serverku up <project>` | Create VM, attach storage, provision, sync, and deploy. |
 | `serverku deploy <project>` | Push code changes to the running VM: re-sync, rewrite compose, `compose up -d`. Same IP, seconds not minutes. |

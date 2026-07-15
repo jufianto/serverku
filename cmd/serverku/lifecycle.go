@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/jufianto/serverku/internal/config"
 	"github.com/jufianto/serverku/internal/notify"
@@ -27,11 +28,32 @@ func newProviderFactory() orchestrator.ProviderFactory {
 		case "gcp":
 			return gcp.New(ctx, cfg.ProjectID, cfg.Zone)
 		case "digitalocean":
-			return digitalocean.New(ctx)
+			token, err := resolveDOToken()
+			if err != nil {
+				return nil, err
+			}
+			return digitalocean.NewWithToken(token)
 		default:
 			return nil, fmt.Errorf("unsupported provider: %s", cfg.Provider)
 		}
 	}
+}
+
+// resolveDOToken returns the DigitalOcean API token, preferring the
+// DIGITALOCEAN_TOKEN environment variable and falling back to the token saved
+// by `serverku setup digitalocean` in the credentials file.
+func resolveDOToken() (string, error) {
+	if t := os.Getenv("DIGITALOCEAN_TOKEN"); t != "" {
+		return t, nil
+	}
+	if store != nil {
+		if t, err := store.LoadCredential("digitalocean"); err != nil {
+			return "", err
+		} else if t != "" {
+			return t, nil
+		}
+	}
+	return "", fmt.Errorf("no DigitalOcean token found: set DIGITALOCEAN_TOKEN or run 'serverku setup digitalocean'")
 }
 
 // buildNotifier constructs a MultiNotifier based on the project configuration.

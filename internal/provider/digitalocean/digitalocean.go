@@ -411,3 +411,14 @@ func (p *Provider) ValidateCredentials(ctx context.Context) error {
 	}
 	return nil
 }
+
+// AccountEmail fetches the account the token belongs to and returns its email.
+// It doubles as a credential check (a bad token fails here) and lets
+// `serverku setup` show which account is being configured.
+func (p *Provider) AccountEmail(ctx context.Context) (string, error) {
+	acct, _, err := p.client.Account.Get(ctx)
+	if err != nil {
+		return "", fmt.Errorf("digitalocean credentials check failed: %w", err)
+	}
+	return acct.Email, nil
+}

@@ -9,6 +9,7 @@ require (
 	github.com/digitalocean/godo v1.191.0
 	github.com/spf13/cobra v1.8.0
 	golang.org/x/crypto v0.28.0
+	golang.org/x/oauth2 v0.27.0
 	google.golang.org/api v0.200.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -60,7 +61,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.29.0 // indirect
 	go.opentelemetry.io/otel/trace v1.29.0 // indirect
 	golang.org/x/net v0.30.0 // indirect
-	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sync v0.15.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.23.0 // indirect

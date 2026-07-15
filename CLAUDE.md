@@ -57,7 +57,10 @@ implementations; the orchestrator is provider-agnostic.
 - **`internal/provider/`** — `CloudProvider` interface (`provider.go`) plus `gcp/`
   and `digitalocean/` implementations. **Both providers are implemented.** Add a new
   cloud by implementing the interface and adding a case in `newProviderFactory()`.
-  DigitalOcean rejects `spot: true` (no equivalent to GCP preemptible).
+  DigitalOcean rejects `spot: true` and `max_uptime_hours` at config
+  validation (no GCP-preemptible equivalent, and a powered-off droplet still
+  bills so there's no safe auto-shutdown). GCP `max_uptime_hours` maps to
+  `scheduling.maxRunDuration` + `instanceTerminationAction: DELETE`.
   `DNSManager` is an *optional* capability interface — providers that support DNS
   automation implement `EnsureARecord`; the orchestrator detects it via a type
   assertion on the `CloudProvider` and `up` fails fast if `dns.enabled` on a

@@ -211,15 +211,16 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	log.Printf("[orchestrator] creating VM %q", vmName)
 
 	vm, err := cp.CreateVM(ctx, provider.VMConfig{
-		Name:        vmName,
-		Region:      cfg.Region,
-		Zone:        cfg.Zone,
-		MachineType: cfg.VM.Size,
-		Image:       cfg.VM.Image,
-		Spot:        cfg.VM.Spot,
-		Tags:        []string{"serverku", fmt.Sprintf("serverku-%s", projectName)},
-		SSHPubKey:   pubKey,
-		ProjectID:   cfg.ProjectID,
+		Name:           vmName,
+		Region:         cfg.Region,
+		Zone:           cfg.Zone,
+		MachineType:    cfg.VM.Size,
+		Image:          cfg.VM.Image,
+		Spot:           cfg.VM.Spot,
+		MaxUptimeHours: cfg.VM.MaxUptimeHours,
+		Tags:           []string{"serverku", fmt.Sprintf("serverku-%s", projectName)},
+		SSHPubKey:      pubKey,
+		ProjectID:      cfg.ProjectID,
 	})
 	if err != nil {
 		// VM creation failed -- keep disk if it was created, don't clean up

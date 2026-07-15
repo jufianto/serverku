@@ -143,6 +143,32 @@ func TestProjectConfig_Validate_DORejectsSpot(t *testing.T) {
 	}
 }
 
+func TestProjectConfig_Validate_MaxUptime(t *testing.T) {
+	// GCP with a valid max_uptime is fine.
+	cfg := validGCPConfig("test")
+	cfg.VM.MaxUptimeHours = 12
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("GCP max_uptime_hours=12 should validate, got: %v", err)
+	}
+
+	// Out of range is rejected.
+	cfg.VM.MaxUptimeHours = 200
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for max_uptime_hours > 168")
+	}
+
+	// DigitalOcean does not support it (a powered-off droplet still bills).
+	do := &ProjectConfig{
+		Name:     "test",
+		Provider: "digitalocean",
+		Region:   "sgp1",
+		VM:       VMConfig{Size: "s-1vcpu-1gb", MaxUptimeHours: 12},
+	}
+	if err := do.Validate(); err == nil {
+		t.Error("expected error for max_uptime_hours on digitalocean")
+	}
+}
+
 func TestProjectConfig_Validate_HeartbeatRequiresCredentials(t *testing.T) {
 	cfg := validGCPConfig("test")
 	cfg.Notifications.Telegram.HeartbeatHours = 6

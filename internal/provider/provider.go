@@ -106,16 +106,17 @@ type UsageReporter interface {
 
 // VMConfig holds provider-agnostic configuration for creating a VM.
 type VMConfig struct {
-	Name          string   // VM instance name
-	Region        string   // Cloud region (e.g., "asia-southeast1", "sgp1")
-	Zone          string   // Cloud zone (e.g., "asia-southeast1-b"), empty for providers without zones
-	MachineType   string   // Machine type (e.g., "e2-medium", "s-1vcpu-1gb")
-	Image         string   // OS image (e.g., "ubuntu-22-04")
-	Spot          bool     // Use SPOT/preemptible instances
-	Tags          []string // Network/firewall tags
-	SSHPubKey     string   // SSH public key to inject into VM
-	StartupScript string   // Script to run on first boot
-	ProjectID     string   // Cloud project ID (GCP-specific, empty for others)
+	Name           string   // VM instance name
+	Region         string   // Cloud region (e.g., "asia-southeast1", "sgp1")
+	Zone           string   // Cloud zone (e.g., "asia-southeast1-b"), empty for providers without zones
+	MachineType    string   // Machine type (e.g., "e2-medium", "s-1vcpu-1gb")
+	Image          string   // OS image (e.g., "ubuntu-22-04")
+	Spot           bool     // Use SPOT/preemptible instances
+	MaxUptimeHours int      // Auto-delete the VM after N hours of runtime (0 = never); GCP only
+	Tags           []string // Network/firewall tags
+	SSHPubKey      string   // SSH public key to inject into VM
+	StartupScript  string   // Script to run on first boot
+	ProjectID      string   // Cloud project ID (GCP-specific, empty for others)
 }
 
 // VM represents a created virtual machine.

@@ -113,15 +113,19 @@ yourself (a user ADC file or a service-account key), that always wins over
 serverku's stored credentials — `setup` is a convenience, not a requirement.
 `serverku check <project>` re-verifies credentials for a project at any time.
 
-## Tutorials
+## Guides & Tutorials
 
-Prefer learning by doing? [`docs/`](docs/README.md) has blog-style
-walkthroughs deploying real open-source apps, from beginner to advanced:
+[`docs/`](docs/README.md) has decision guides and hands-on walkthroughs.
+Not sure what VM size, disk, or provider to pick? Start with
+**[Choosing your setup](docs/guides/choosing-your-setup.md)** — it explains
+every config choice and how each maps to cost.
 
-1. [Uptime Kuma (JS) on DigitalOcean in 10 minutes](docs/tutorial-uptime-kuma-digitalocean.md) — the minimal first deploy.
-2. [WordPress (PHP) with HTTPS, DNS automation, and persistent data](docs/tutorial-wordpress-digitalocean.md) — the full production flow.
-3. [Gitea (Go) on GCP spot instances with snapshots](docs/tutorial-gitea-gcp.md) — cheap interruptible compute done right.
-4. [Notifications: never pay for a forgotten VM](docs/tutorial-notifications.md) — ntfy, the Telegram wizard, and the still-running heartbeat.
+Then learn by doing with real open-source apps, from beginner to advanced:
+
+1. [Uptime Kuma (JS) on DigitalOcean in 10 minutes](docs/guides/tutorial-uptime-kuma-digitalocean.md) — the minimal first deploy.
+2. [WordPress (PHP) with HTTPS, DNS automation, and persistent data](docs/guides/tutorial-wordpress-digitalocean.md) — the full production flow.
+3. [Gitea (Go) on GCP spot instances with snapshots](docs/guides/tutorial-gitea-gcp.md) — cheap interruptible compute done right.
+4. [Notifications: never pay for a forgotten VM](docs/guides/tutorial-notifications.md) — ntfy, the Telegram wizard, and the still-running heartbeat.
 
 ## Quick Start
 

@@ -86,6 +86,20 @@ func formatVersion(version, commit, date string, dirty bool) string {
 	return version + " (" + strings.Join(extra, ", ") + ")"
 }
 
+// newVersionCmd prints the same version string as the --version flag, so both
+// `serverku version` and `serverku --version` work.
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the serverku version",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Printf("serverku version %s\n", resolveVersion())
+			return nil
+		},
+	}
+}
+
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "serverku",
@@ -144,6 +158,7 @@ When done, tear it down. Pay only for storage when idle.`,
 		newRestoreCmd(),
 		newNtfyCmd(),
 		newNotifyCmd(),
+		newVersionCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

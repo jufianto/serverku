@@ -56,12 +56,15 @@ func initDO(t *testing.T, cfgDir, name string) (string, string, error) {
 }
 
 func TestVersion(t *testing.T) {
-	out, _, err := runCLI(t, "--version")
-	if err != nil {
-		t.Fatalf("--version failed: %v", err)
-	}
-	if !strings.Contains(out, "serverku version") {
-		t.Errorf("unexpected version output: %q", out)
+	// Both the --version flag and the version subcommand must work and agree.
+	for _, args := range [][]string{{"--version"}, {"version"}} {
+		out, _, err := runCLI(t, args...)
+		if err != nil {
+			t.Fatalf("%v failed: %v", args, err)
+		}
+		if !strings.Contains(out, "serverku version") {
+			t.Errorf("%v: unexpected version output: %q", args, out)
+		}
 	}
 }
 

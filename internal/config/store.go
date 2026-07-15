@@ -64,6 +64,20 @@ func (s *Store) CredentialsPath() string {
 	return filepath.Join(s.baseDir, "credentials.yaml")
 }
 
+// GcloudDir returns serverku's isolated gcloud config directory. `serverku
+// setup gcp` writes Application Default Credentials here (via CLOUDSDK_CONFIG)
+// so serverku's GCP credentials never touch the user's system-wide
+// ~/.config/gcloud.
+func (s *Store) GcloudDir() string {
+	return filepath.Join(s.baseDir, "gcloud")
+}
+
+// GcloudADCPath returns the path to the ADC file inside serverku's isolated
+// gcloud directory (created by `serverku setup gcp`).
+func (s *Store) GcloudADCPath() string {
+	return filepath.Join(s.GcloudDir(), "application_default_credentials.json")
+}
+
 // SaveCredential stores a provider API token in the 0600 credentials file,
 // merging with any existing entries. The file mode is re-asserted on every
 // write so an existing loosely-permissioned file is tightened.

@@ -2,8 +2,6 @@ package main
 
 import (
 	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/jufianto/serverku/internal/config"
@@ -64,62 +62,41 @@ func TestResolveDOToken_NoneConfigured(t *testing.T) {
 	}
 }
 
-func TestADCLocation_EnvVarWins(t *testing.T) {
-	f := filepath.Join(t.TempDir(), "key.json")
-	if err := os.WriteFile(f, []byte("{}"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", f)
+func TestResolveGCPCredentialEnv_UserEnvWins(t *testing.T) {
+	withStore(t)
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "/my/own/key.json")
 
-	path, ok := adcLocation()
-	if !ok || path != f {
-		t.Errorf("adcLocation() = (%q, %v), want (%q, true)", path, ok, f)
+	resolveGCPCredentialEnv()
+
+	if got := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); got != "/my/own/key.json" {
+		t.Errorf("a user-set GOOGLE_APPLICATION_CREDENTIALS must be left untouched, got %q", got)
 	}
 }
 
-func TestADCLocation_EnvVarPointsAtMissingFile(t *testing.T) {
-	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", filepath.Join(t.TempDir(), "nope.json"))
-	// Point HOME at an empty dir so the well-known path finds nothing either.
-	t.Setenv("HOME", t.TempDir())
-
-	if path, ok := adcLocation(); ok {
-		t.Errorf("adcLocation() = (%q, true), want not found", path)
-	}
-}
-
-func TestADCLocation_WellKnownPath(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("well-known path uses %APPDATA% on Windows")
-	}
+func TestResolveGCPCredentialEnv_UsesIsolatedADC(t *testing.T) {
+	s := withStore(t)
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	want := filepath.Join(home, ".config", "gcloud", "application_default_credentials.json")
-	if err := os.MkdirAll(filepath.Dir(want), 0755); err != nil {
+	if err := os.MkdirAll(s.GcloudDir(), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(want, []byte("{}"), 0600); err != nil {
+	if err := os.WriteFile(s.GcloudADCPath(), []byte("{}"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
-	path, ok := adcLocation()
-	if !ok {
-		t.Fatalf("adcLocation() not found, want %q", want)
-	}
-	if filepath.Clean(path) != filepath.Clean(want) {
-		t.Errorf("adcLocation() = %q, want %q", path, want)
+	resolveGCPCredentialEnv()
+
+	if got := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); got != s.GcloudADCPath() {
+		t.Errorf("expected env pointed at isolated ADC %q, got %q", s.GcloudADCPath(), got)
 	}
 }
 
-func TestWellKnownADCPath_MatchesGoLoader(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("well-known path uses %APPDATA% on Windows")
-	}
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	want := filepath.Join(home, ".config", "gcloud", "application_default_credentials.json")
-	if got := wellKnownADCPath(); got != want {
-		t.Errorf("wellKnownADCPath() = %q, want %q", got, want)
+func TestResolveGCPCredentialEnv_NoIsolatedADC(t *testing.T) {
+	withStore(t)
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+
+	resolveGCPCredentialEnv()
+
+	if got := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); got != "" {
+		t.Errorf("expected env left empty when no isolated ADC exists, got %q", got)
 	}
 }

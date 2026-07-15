@@ -98,6 +98,11 @@ Default base dir is `~/.serverku/` (override with `--config-dir`):
 - `credentials.yaml` — provider API tokens (secret), written 0600 by
   `serverku setup`; a `provider → token` map (`Store.SaveCredential` /
   `LoadCredential`). Kept out of `projects/` because that dir is shareable config.
+- `gcloud/` — serverku's isolated GCP Application Default Credentials
+  (`Store.GcloudDir()` / `GcloudADCPath()`), written by `serverku setup gcp` via
+  `CLOUDSDK_CONFIG` so serverku's GCP login never touches the user's system-wide
+  `~/.config/gcloud`. The chosen project is recorded there as the ADC
+  `quota_project_id` (`gcp.QuotaProjectFromADC`).
 
 Project names are validated strictly: lowercase letters, digits, and hyphens only;
 no leading/trailing hyphen.
@@ -105,10 +110,16 @@ no leading/trailing hyphen.
 ## GCP notes
 
 GCP provider construction (`internal/provider/gcp/gcp.go`) uses `compute.NewService(ctx)`,
-so local Application Default Credentials must already work for real provider calls.
-`serverku setup gcp` (`cmd/serverku/setup.go`) drives the `gcloud auth
-application-default login` flow and verifies via `ValidateCredentials`; it never
-handles OAuth itself.
+so Application Default Credentials must resolve for real provider calls. Before
+constructing the GCP provider, the factory calls `resolveGCPCredentialEnv()`
+(`cmd/serverku/lifecycle.go`), which points `GOOGLE_APPLICATION_CREDENTIALS` at
+serverku's isolated ADC (`~/.serverku/gcloud/`) when the user hasn't set it —
+env wins, then isolated ADC, then system default. `serverku setup gcp`
+(`cmd/serverku/setup.go`) drives `gcloud auth application-default login` into
+that isolated dir (via `CLOUDSDK_CONFIG`), lists projects
+(`gcp.ListProjects`), lets the user pick one, records it as the ADC quota
+project, and verifies via `ValidateCredentials`. serverku never handles OAuth
+itself, and its GCP login never touches the user's `~/.config/gcloud`.
 
 DigitalOcean tokens are resolved by `resolveDOToken()` (`cmd/serverku/lifecycle.go`):
 `DIGITALOCEAN_TOKEN` env var first, then `credentials.yaml`. The factory calls

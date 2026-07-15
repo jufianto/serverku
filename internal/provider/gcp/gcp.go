@@ -132,6 +132,17 @@ func (g *GCPProvider) CreateVM(ctx context.Context, config provider.VMConfig) (*
 		scheduling.ProvisioningModel = "STANDARD"
 	}
 
+	// max_uptime: let GCP itself delete the instance after N hours as a hard
+	// budget cap. DELETE (not STOP) matches serverku's disposable-VM model and
+	// actually stops billing; the non-boot data disk is not auto-delete, so it
+	// survives and reattaches on the next `up`. status reconciles the gone VM.
+	if config.MaxUptimeHours > 0 {
+		scheduling.MaxRunDuration = &compute.Duration{Seconds: int64(config.MaxUptimeHours) * 3600}
+		scheduling.InstanceTerminationAction = "DELETE"
+		// maxRunDuration requires automaticRestart to be false.
+		scheduling.AutomaticRestart = boolPtr(false)
+	}
+
 	// Build instance tags
 	tags := config.Tags
 	if len(tags) == 0 {

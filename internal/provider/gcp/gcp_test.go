@@ -231,3 +231,65 @@ func TestCreateVM_BuildsSpotInstanceRequest(t *testing.T) {
 		t.Errorf("expected ssh-keys metadata to be set, got %+v", insertBody.Metadata)
 	}
 }
+
+func TestCreateVM_SetsMaxRunDuration(t *testing.T) {
+	var insertBody compute.Instance
+	g := fakeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/operations/"):
+			_ = json.NewEncoder(w).Encode(compute.Operation{Name: "op-1", Status: "DONE"})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/instances"):
+			b, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(b, &insertBody)
+			_ = json.NewEncoder(w).Encode(compute.Operation{Name: "op-1", Status: "PENDING"})
+		case strings.HasSuffix(r.URL.Path, "/instances/capped"):
+			_ = json.NewEncoder(w).Encode(compute.Instance{Id: 9, Name: "capped", Status: "PROVISIONING"})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+
+	if _, err := g.CreateVM(context.Background(), provider.VMConfig{
+		Name:           "capped",
+		MachineType:    "e2-medium",
+		MaxUptimeHours: 12,
+	}); err != nil {
+		t.Fatalf("CreateVM: %v", err)
+	}
+
+	s := insertBody.Scheduling
+	if s == nil || s.MaxRunDuration == nil {
+		t.Fatalf("expected MaxRunDuration to be set, got %+v", s)
+	}
+	if s.MaxRunDuration.Seconds != 12*3600 {
+		t.Errorf("MaxRunDuration.Seconds = %d, want %d", s.MaxRunDuration.Seconds, 12*3600)
+	}
+	if s.InstanceTerminationAction != "DELETE" {
+		t.Errorf("InstanceTerminationAction = %q, want DELETE", s.InstanceTerminationAction)
+	}
+}
+
+func TestCreateVM_NoMaxRunDurationByDefault(t *testing.T) {
+	var insertBody compute.Instance
+	g := fakeProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/operations/"):
+			_ = json.NewEncoder(w).Encode(compute.Operation{Name: "op-1", Status: "DONE"})
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/instances"):
+			b, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(b, &insertBody)
+			_ = json.NewEncoder(w).Encode(compute.Operation{Name: "op-1", Status: "PENDING"})
+		case strings.HasSuffix(r.URL.Path, "/instances/plain"):
+			_ = json.NewEncoder(w).Encode(compute.Instance{Id: 10, Name: "plain", Status: "PROVISIONING"})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+
+	if _, err := g.CreateVM(context.Background(), provider.VMConfig{Name: "plain", MachineType: "e2-medium"}); err != nil {
+		t.Fatalf("CreateVM: %v", err)
+	}
+	if insertBody.Scheduling != nil && insertBody.Scheduling.MaxRunDuration != nil {
+		t.Errorf("MaxRunDuration should be unset without max_uptime, got %+v", insertBody.Scheduling.MaxRunDuration)
+	}
+}

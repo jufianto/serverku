@@ -335,6 +335,7 @@ vm:
   size: s-1vcpu-1gb
   image: ubuntu-22-04-x64
   spot: false
+  max_uptime_hours: 12   # GCP only: auto-delete the VM after 12h (see Auto-shutdown)
 
 storage:
   enabled: true
@@ -568,6 +569,34 @@ signal through ntfy.sh — an Apple/APNs constraint).
 then auto-discovers your `chat_id` — you just send your bot one message —
 and finishes with a test send. No manual `getUpdates` spelunking.
 
+## Auto-shutdown (max uptime)
+
+The heartbeat *reminds* you a VM is still running; `vm.max_uptime_hours`
+*acts* on it — a hard budget cap that deletes the VM after N hours no
+matter what:
+
+```yaml
+vm:
+  size: e2-small
+  max_uptime_hours: 12
+```
+
+On the next `up`, GCP itself is told to delete the instance after that
+runtime (`maxRunDuration` + `instanceTerminationAction: DELETE`). Because
+the *cloud* enforces it, it fires even if your laptop is off, and it needs
+no credentials on the VM. The persistent disk is not auto-delete, so your
+data survives and reattaches on the next `up` — exactly like an automatic
+`serverku down`. Run `serverku status` afterward and serverku reconciles the
+now-gone VM back to `stopped`.
+
+Pair it with a heartbeat for the full story: "still running, $X so far"
+every few hours, then a guaranteed teardown at the cap.
+
+> **GCP only.** DigitalOcean has no equivalent, and a *powered-off* droplet
+> still bills — so there is no safe auto-shutdown there. serverku rejects
+> `max_uptime_hours` on DigitalOcean at config time; use
+> `notifications.*.heartbeat_hours` as a reminder instead.
+
 ## Still-Running Heartbeat
 
 The most expensive VM is the one you forgot. With `heartbeat_hours` set
@@ -673,9 +702,9 @@ See [`docs/development.md`](docs/development.md) for the contributor guide and o
   `CloudProvider` interface is small and well-trodden; see
   [`docs/development.md`](docs/development.md#adding-a-cloud-provider) if
   you want to contribute it.
-- [ ] `vm.max_uptime` kill switch — the heartbeat tells you a VM is still
-  running; this one would act on it.
 - [ ] Scheduled/automatic backups (the `backup`/`restore` primitives exist).
+- [ ] `max_uptime` for DigitalOcean — needs a client-side scheduler since DO
+  has no native auto-delete; GCP is supported today.
 
 ## Contributing
 

@@ -138,6 +138,13 @@ type VMConfig struct {
 	Size  string `yaml:"size"`            // Machine type (e.g., "e2-medium", "s-1vcpu-1gb")
 	Image string `yaml:"image,omitempty"` // OS image, defaults to "ubuntu-22-04"
 	Spot  bool   `yaml:"spot"`            // Use SPOT/preemptible instances
+
+	// MaxUptimeHours auto-deletes the VM after this many hours of runtime as
+	// a hard budget cap (the disk survives, so it's like an automatic
+	// `serverku down`). Enforced by the cloud itself, not serverku, so it
+	// fires even if your machine is off. GCP only -- DigitalOcean has no
+	// equivalent. Zero disables it.
+	MaxUptimeHours int `yaml:"max_uptime_hours,omitempty"`
 }
 
 // StorageConfig holds persistent block storage configuration.
@@ -190,6 +197,15 @@ func (c *ProjectConfig) Validate() error {
 
 	if c.Provider == "digitalocean" && c.VM.Spot {
 		errs = append(errs, "vm.spot is not supported on digitalocean (GCP only)")
+	}
+
+	if hb := c.VM.MaxUptimeHours; hb != 0 {
+		if hb < 0 || hb > 168 {
+			errs = append(errs, "vm.max_uptime_hours must be between 1 and 168")
+		}
+		if c.Provider == "digitalocean" {
+			errs = append(errs, "vm.max_uptime_hours is not supported on digitalocean (GCP only; a powered-off droplet still bills, so there is no safe auto-shutdown -- use notifications.*.heartbeat_hours as a reminder instead)")
+		}
 	}
 
 	if c.Storage.Enabled {

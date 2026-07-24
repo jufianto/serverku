@@ -104,6 +104,39 @@ type UsageReporter interface {
 	MonthToDateUsageUSD(ctx context.Context) (float64, error)
 }
 
+// CatalogRegion is a region/location a provider offers, for `init` to present
+// as a choice instead of a free-text field.
+type CatalogRegion struct {
+	Slug string // provider region slug, e.g. "sgp1" or "asia-southeast1"
+	Name string // human-readable name, e.g. "Singapore 1" ("" if none)
+}
+
+// CatalogSize is a VM size/machine type a provider offers, with enough detail
+// for `init` to show a meaningful, priced choice.
+type CatalogSize struct {
+	Slug         string  // size slug, e.g. "s-1vcpu-1gb" or "e2-medium"
+	VCPUs        int     // number of vCPUs
+	MemoryMB     int     // memory in MB
+	DiskGB       int     // included disk in GB
+	PriceMonthly float64 // USD/month (0 if unknown)
+	PriceHourly  float64 // USD/hour (0 if unknown)
+}
+
+// CatalogLister is an optional capability implemented by providers that can
+// enumerate their available regions and VM sizes from a live API, so `serverku
+// init` can offer a selectable, priced list instead of a free-text field.
+// Detection is via a type assertion on CloudProvider; when unavailable the CLI
+// falls back to a curated static list.
+type CatalogLister interface {
+	// ListRegions returns the provider's available regions.
+	ListRegions(ctx context.Context) ([]CatalogRegion, error)
+
+	// ListSizes returns the available VM sizes, filtered to those offered in
+	// the given region (empty region = no filter). Results are sorted cheapest
+	// first.
+	ListSizes(ctx context.Context, region string) ([]CatalogSize, error)
+}
+
 // ComponentQuery names the resources a caller wants ListComponents to look up.
 // The caller supplies the project name and the serverku-managed VM/disk names;
 // each provider derives its own provider-specific resource names (SSH key,

@@ -22,6 +22,13 @@ import (
 
 // newProviderFactory returns a ProviderFactory that creates the appropriate
 // cloud provider based on the project config.
+// providerSupportsSpot reports whether the provider offers spot/preemptible
+// VMs. Only GCP does; DigitalOcean has no equivalent (spot: true is rejected at
+// config validation), so spot is omitted from user-facing output for it.
+func providerSupportsSpot(provider string) bool {
+	return provider == "gcp"
+}
+
 func newProviderFactory() orchestrator.ProviderFactory {
 	return func(ctx context.Context, cfg *config.ProjectConfig) (provider.CloudProvider, error) {
 		switch cfg.Provider {
@@ -117,7 +124,11 @@ the external IP shown on completion.`,
 			fmt.Printf("Starting project %q...\n", name)
 			fmt.Printf("  Provider: %s\n", cfg.Provider)
 			fmt.Printf("  Region:   %s / %s\n", cfg.Region, cfg.Zone)
-			fmt.Printf("  VM:       %s (spot: %v)\n", cfg.VM.Size, cfg.VM.Spot)
+			if providerSupportsSpot(cfg.Provider) {
+				fmt.Printf("  VM:       %s (spot: %v)\n", cfg.VM.Size, cfg.VM.Spot)
+			} else {
+				fmt.Printf("  VM:       %s\n", cfg.VM.Size)
+			}
 			if cfg.Storage.Enabled {
 				fmt.Printf("  Storage:  %dGB at %s\n", cfg.Storage.SizeGB, cfg.Storage.MountPath)
 			}

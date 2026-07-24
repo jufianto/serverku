@@ -121,7 +121,11 @@ func printProjectStatus(cfg *config.ProjectConfig, state *config.ProjectState, r
 		fmt.Printf("Zone:      %s\n", cfg.Zone)
 	}
 	fmt.Printf("VM Size:   %s\n", cfg.VM.Size)
-	fmt.Printf("Spot:      %v\n", cfg.VM.Spot)
+	// Spot is a GCP-only concept; DigitalOcean has no equivalent, so don't
+	// show a misleading "Spot: false" for providers that don't support it.
+	if providerSupportsSpot(cfg.Provider) {
+		fmt.Printf("Spot:      %v\n", cfg.VM.Spot)
+	}
 	fmt.Printf("Storage:   ")
 	if cfg.Storage.Enabled {
 		fmt.Printf("%dGB at %s\n", cfg.Storage.SizeGB, cfg.Storage.MountPath)

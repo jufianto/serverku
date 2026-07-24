@@ -251,9 +251,12 @@ func newDestroyCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "destroy <project-name>",
-		Short: "Permanently delete a project and all its resources",
-		Long: `Destroy everything: VM, persistent storage, and project configuration.
-This action is irreversible - all data will be permanently lost.`,
+		Short: "Permanently delete a project's cloud resources (keeps local config)",
+		Long: `Destroy the cloud resources: VM, persistent storage, and firewall.
+This is irreversible - all data on the VM and storage is permanently lost.
+
+The local project configuration is kept, so you can bring the project back
+later with 'serverku up'. Delete the config file yourself if you want it gone.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -264,8 +267,8 @@ This action is irreversible - all data will be permanently lost.`,
 			}
 
 			if !force {
-				fmt.Printf("WARNING: This will permanently delete ALL resources for project %q.\n", name)
-				fmt.Printf("This includes the VM, persistent storage, and all data.\n")
+				fmt.Printf("WARNING: This will permanently delete the cloud resources for project %q.\n", name)
+				fmt.Printf("This includes the VM, persistent storage, and all data (the local config is kept).\n")
 				fmt.Printf("Type the project name to confirm: ")
 				var confirm string
 				_, _ = fmt.Scanln(&confirm)
@@ -286,7 +289,7 @@ This action is irreversible - all data will be permanently lost.`,
 				return fmt.Errorf("failed to destroy project: %w", err)
 			}
 
-			fmt.Printf("Project %q destroyed. All resources have been permanently deleted.\n", name)
+			fmt.Printf("Project %q destroyed. Cloud resources deleted; local config kept (recreate with `serverku up %s`).\n", name, name)
 
 			return nil
 		},

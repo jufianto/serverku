@@ -679,15 +679,16 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 		}
 	}
 
-	// Step 3: Delete local state and config
+	// Step 3: Reset local runtime state. The project *config* is intentionally
+	// preserved -- destroy removes the cloud resources (VM, storage, firewall),
+	// not the project definition, so it can be brought back with `up` without
+	// re-running `init`. Deleting the state file returns the project to the
+	// clean post-init condition (LoadState then reports StatusStopped).
 	if err := o.store.DeleteState(projectName); err != nil {
 		return fmt.Errorf("failed to delete state: %w", err)
 	}
-	if err := o.store.DeleteProject(projectName); err != nil {
-		return fmt.Errorf("failed to delete project config: %w", err)
-	}
 
-	log.Printf("[orchestrator] project %q destroyed", projectName)
+	log.Printf("[orchestrator] project %q destroyed (config preserved)", projectName)
 
 	// Step 4: post_destroy hook -- best-effort local cleanup after destroy.
 	if err := o.hooks.Run(ctx, "post_destroy", cfg.Hooks.PostDestroy, hookWorkDir(cfg), hookEnv(cfg, "")); err != nil {

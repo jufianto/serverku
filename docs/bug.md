@@ -60,7 +60,7 @@ at boot; waiting on `cloud-init status --wait` covers that too.
 
 ## BUG-4 — `destroy` deletes the local project config, not just cloud resources
 
-- **Status:** OPEN
+- **Status:** FIXED (staged, not yet committed)
 - **Where:** `internal/orchestrator/orchestrator.go:681-687` (`Destroy`, step 3);
   command help `cmd/serverku/lifecycle.go:244`.
 - **Symptom:** after `serverku destroy <name>`, `~/.serverku/projects/<name>.yaml`
@@ -82,16 +82,18 @@ resources (VM + persistent storage + firewall) and the runtime **state**, but
 be brought back with `up` without re-`init`. This matches the Terraform-style
 split between "the definition" and "the provisioned resources."
 
-**Proposed fix.**
-- Drop the `DeleteProject` call from `Destroy` (keep `DeleteState`, or reset
-  state to a clean "not provisioned" state).
-- Update the command `Long` help + the final "permanently deleted" message so
-  they no longer claim the configuration is removed.
-- *(Optional)* add a `--purge` / `--remove-config` flag for users who explicitly
-  want the definition deleted too.
+**Fix.** Dropped the `DeleteProject` call from `Destroy`; `DeleteState` stays, so
+the project returns to the clean post-init condition (`LoadState` reports
+`StatusStopped` when the state file is absent) with its config intact. Updated
+the destroy command `Short`/`Long` help, the confirmation warning, and the
+success message to say the config is kept. Tests updated to assert the config is
+preserved and state is reset.
+
+**Follow-up (not done):** a `--purge` / `--remove-config` flag for users who
+explicitly want the definition deleted too.
 
 **Impact of the bug on this session:** the `wpblog` project config was lost to a
-`destroy`; it has to be recreated from scratch.
+`destroy`; it had to be recreated from scratch.
 
 ---
 

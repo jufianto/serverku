@@ -564,9 +564,18 @@ func TestDestroy(t *testing.T) {
 		}
 	}
 
-	// Verify config and state are deleted
-	if orch.store.ProjectExists("test-project") {
-		t.Error("project config should be deleted after Destroy")
+	// The project config must be PRESERVED -- destroy removes cloud resources,
+	// not the project definition, so it can be brought back with `up`.
+	if !orch.store.ProjectExists("test-project") {
+		t.Error("project config should be preserved after Destroy")
+	}
+	// Runtime state is reset to the clean post-init condition.
+	st, err := orch.store.LoadState("test-project")
+	if err != nil {
+		t.Fatalf("LoadState after Destroy: %v", err)
+	}
+	if st.Status != config.StatusStopped || st.VMName != "" || st.DiskName != "" {
+		t.Errorf("state should be reset after Destroy, got %+v", st)
 	}
 }
 
@@ -983,8 +992,8 @@ func TestDestroyFirewallFailureIsNonFatal(t *testing.T) {
 	if err := orch.Destroy(ctx, "test-project", factory); err != nil {
 		t.Fatalf("Destroy() should succeed despite firewall cleanup failure, got: %v", err)
 	}
-	if orch.store.ProjectExists("test-project") {
-		t.Error("project config should be deleted even when firewall cleanup fails")
+	if !orch.store.ProjectExists("test-project") {
+		t.Error("project config should be preserved even when firewall cleanup fails")
 	}
 }
 

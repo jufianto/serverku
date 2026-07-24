@@ -3,11 +3,37 @@ package digitalocean
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/digitalocean/godo"
 	"github.com/jufianto/serverku/internal/provider"
 )
+
+func TestServerkuUserData(t *testing.T) {
+	// Empty key -> no cloud-init (keep DO's default root-only setup).
+	if got := serverkuUserData("  "); got != "" {
+		t.Errorf("expected empty user-data for blank key, got %q", got)
+	}
+
+	ud := serverkuUserData("  ssh-ed25519 AAAAKEY user@host \n")
+	if !strings.HasPrefix(ud, "#cloud-config") {
+		t.Errorf("user-data must start with #cloud-config, got %q", ud)
+	}
+	for _, want := range []string{
+		"name: serverku",
+		"NOPASSWD:ALL",
+		"ssh-ed25519 AAAAKEY user@host",
+	} {
+		if !strings.Contains(ud, want) {
+			t.Errorf("user-data missing %q:\n%s", want, ud)
+		}
+	}
+	// The key must be trimmed of surrounding whitespace.
+	if strings.Contains(ud, "  ssh-ed25519") {
+		t.Errorf("public key was not trimmed:\n%s", ud)
+	}
+}
 
 func TestNew_MissingToken(t *testing.T) {
 	// Temporarily unset token

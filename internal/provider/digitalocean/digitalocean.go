@@ -91,6 +91,11 @@ func (p *Provider) CreateVM(ctx context.Context, cfg provider.VMConfig) (*provid
 			{ID: sshKeyID, Fingerprint: sshKeyFingerprint},
 		},
 		Tags: cfg.Tags,
+		// DigitalOcean injects the account SSH key into root's authorized_keys
+		// only; it has no equivalent of GCP's guest-agent user creation. serverku
+		// connects as the "serverku" user (see orchestrator), so create that user
+		// via cloud-init with the same key and passwordless sudo.
+		UserData: serverkuUserData(cfg.SSHPubKey),
 	}
 
 	droplet, _, err := p.client.Droplets.Create(ctx, createRequest)
@@ -104,6 +109,26 @@ func (p *Provider) CreateVM(ctx context.Context, cfg provider.VMConfig) (*provid
 		Zone:     cfg.Region,
 		Provider: "digitalocean",
 	}, nil
+}
+
+// serverkuUserData returns a cloud-init config that provisions the "serverku"
+// login user with passwordless sudo and the given public key. Returns an empty
+// string when no key is provided so the droplet keeps DigitalOcean's default
+// (root-only) SSH setup.
+func serverkuUserData(pubKey string) string {
+	pubKey = strings.TrimSpace(pubKey)
+	if pubKey == "" {
+		return ""
+	}
+	return fmt.Sprintf(`#cloud-config
+users:
+  - name: serverku
+    groups: sudo
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - %s
+`, pubKey)
 }
 
 // GetVM retrieves a Droplet by name.

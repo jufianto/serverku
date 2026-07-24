@@ -141,7 +141,7 @@ interactive prompts.`,
 
 func runInteractiveInit(name string) error {
 	var (
-		provider       string
+		providerName   string
 		gcpProjectID   string
 		region         string
 		zone           string
@@ -156,42 +156,58 @@ func runInteractiveInit(name string) error {
 	// Pre-fill the GCP project from `serverku setup gcp`, if it ran.
 	gcpProjectID = defaultGCPProject()
 
-	// Defaults that might change based on provider
-	defaultRegion := "asia-southeast1"
-	defaultZone := "asia-southeast1-b"
-	defaultSize := "e2-medium"
-
-	form := huh.NewForm(
+	// Stage 1: pick the provider (and GCP project) first, so we know which
+	// region/size catalog to load before asking for them.
+	stage1 := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Cloud Provider").
 				Options(
-					huh.NewOption("GCP", "gcp"),
 					huh.NewOption("DigitalOcean", "digitalocean"),
+					huh.NewOption("GCP", "gcp"),
 				).
-				Value(&provider),
+				Value(&providerName),
 		),
 		huh.NewGroup(
 			huh.NewInput().
 				Title("GCP Project ID").
 				Value(&gcpProjectID).
 				Validate(func(s string) error {
-					if provider == "gcp" && s == "" {
+					if providerName == "gcp" && s == "" {
 						return fmt.Errorf("project ID is required for GCP")
 					}
 					return nil
 				}),
-		).WithHideFunc(func() bool { return provider != "gcp" }),
+		).WithHideFunc(func() bool { return providerName != "gcp" }),
+	)
+	if err := stage1.Run(); err != nil {
+		return err
+	}
+
+	// Load the region/size catalog: live from the provider API when possible,
+	// otherwise a built-in curated list.
+	cat := loadCatalog(providerName, gcpProjectID)
+	if cat.live {
+		fmt.Printf("Loaded live regions and sizes from %s.\n", providerName)
+	} else {
+		fmt.Printf("Using built-in %s size/region suggestions (edit the YAML for anything not listed).\n", providerName)
+	}
+
+	// Sensible defaults for the non-catalog fields.
+	spot = true
+	storageEnabled = true
+	storageGB = "20"
+	mountPath = "/data"
+	composeFile = "docker-compose.yml"
+
+	// Stage 2: region/size come from the catalog (selectable, not free text);
+	// the size list reacts to the chosen region via OptionsFunc.
+	stage2 := huh.NewForm(
 		huh.NewGroup(
-			huh.NewInput().
+			huh.NewSelect[string]().
 				Title("Region").
-				Value(&region).
-				DescriptionFunc(func() string {
-					if provider == "digitalocean" {
-						return "e.g., sgp1, nyc1"
-					}
-					return "e.g., asia-southeast1, us-central1"
-				}, &provider),
+				Options(cat.regionOptions()...).
+				Value(&region),
 			huh.NewInput().
 				Title("Zone (GCP only)").
 				Value(&zone).
@@ -200,24 +216,27 @@ func runInteractiveInit(name string) error {
 						return fmt.Sprintf("e.g., %s-b", region)
 					}
 					return "e.g., asia-southeast1-b"
-				}, &region),
+				}, &region).
+				Validate(func(s string) error {
+					if providerName == "gcp" && s == "" {
+						return fmt.Errorf("zone is required for GCP")
+					}
+					return nil
+				}),
 		),
 		huh.NewGroup(
-			huh.NewInput().
+			huh.NewSelect[string]().
 				Title("VM Size").
-				Value(&vmSize).
-				DescriptionFunc(func() string {
-					if provider == "digitalocean" {
-						return "e.g., s-1vcpu-1gb"
-					}
-					return "e.g., e2-medium"
-				}, &provider),
+				OptionsFunc(func() []huh.Option[string] {
+					return cat.sizeOptions(region)
+				}, &region).
+				Value(&vmSize),
 		),
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Use SPOT / Preemptible instances?").
 				Value(&spot),
-		).WithHideFunc(func() bool { return provider != "gcp" }),
+		).WithHideFunc(func() bool { return providerName != "gcp" }),
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Enable persistent storage?").
@@ -250,32 +269,13 @@ func runInteractiveInit(name string) error {
 				Value(&composeFile),
 		),
 	)
-
-	// Set initial values so user doesn't have to type them if they are ok with defaults
-	region = defaultRegion
-	zone = defaultZone
-	vmSize = defaultSize
-	spot = true
-	storageEnabled = true
-	storageGB = "20"
-	mountPath = "/data"
-	composeFile = "docker-compose.yml"
-
-	err := form.Run()
-	if err != nil {
+	if err := stage2.Run(); err != nil {
 		return err
 	}
 
-	// Process answers
-	if provider == "digitalocean" {
-		if region == defaultRegion {
-			region = "sgp1"
-		} // fallback if left as default GCP region
-		if vmSize == defaultSize {
-			vmSize = "s-1vcpu-1gb"
-		}
-		// The spot question is hidden for DigitalOcean (no spot equivalent),
-		// but its default value is true -- reset it so the config validates.
+	// The spot question is hidden for DigitalOcean (no spot equivalent), but its
+	// default value is true -- reset it so the config validates.
+	if providerName == "digitalocean" {
 		spot = false
 	}
 
@@ -286,7 +286,7 @@ func runInteractiveInit(name string) error {
 
 	cfg := &config.ProjectConfig{
 		Name:      name,
-		Provider:  provider,
+		Provider:  providerName,
 		ProjectID: gcpProjectID,
 		Region:    region,
 		Zone:      zone,

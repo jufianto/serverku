@@ -101,6 +101,50 @@ explicitly want the definition deleted too.
 
 Not bugs — current behavior is correct, but under-validated / worth improving.
 
+## ENH-5 — Engineer reference docs: full YAML key + CLI command reference
+
+- **Status:** PLANNED
+- **Where:** `docs/reference/config.md`, `docs/reference/commands.md`; optional
+  generator + drift-guard test.
+
+**Goal.** A complete reference for a developer who wants to know *every* option
+without reading the source: (1) every project-YAML key, (2) every command and
+flag. Man-page style — tables + annotated examples.
+
+**Part 1 — Config reference (`docs/reference/config.md`).** Document every field
+in `ProjectConfig` and nested structs (`internal/config/project.go`): key path,
+type, required/optional, default, provider constraints, example. Full key set to
+cover:
+- top level: `name`, `provider` (gcp|digitalocean), `project_id` (GCP),
+  `region`, `zone` (GCP), `compose_file`, `sync_dir`, `startup_commands`.
+- `vm`: `size`, `image` (default ubuntu-22-04; DO needs the `-x64` slug — BUG-1),
+  `spot` (GCP only), `max_uptime_hours` (GCP only).
+- `storage`: `enabled`, `size_gb`, `mount_path`.
+- `router`: `enabled`, `domains[]` (`domain`, `service`, `upstream`).
+- `dns`: `enabled`, `ttl` (default 3600).
+- `hooks`: `pre_up`/`post_up`/`pre_deploy`/`post_deploy`/`pre_down`/`post_down`/
+  `pre_destroy`/`post_destroy` (local shell; pre_* gate, post_* best-effort).
+- `notifications`: `slack.webhook_url`; `telegram.{bot_token,chat_id,
+  heartbeat_hours}`; `ntfy.{server,topic,heartbeat_hours}`.
+- Close with one fully-annotated example YAML.
+
+**Part 2 — CLI reference (`docs/reference/commands.md`).** Every command with
+synopsis, args, flags, description, examples: `init`, `check`, `up`, `deploy`,
+`down`, `destroy`, `status`, `list`, `logs`, `ssh`, `tunnel`, `backup`,
+`restore`, `setup` (+ `gcp`/`digitalocean`), `ntfy`, `notify`, `open`,
+`version`, plus global flags (`--config-dir`, `--verbose`).
+
+**Generation & drift-guard (recommended).**
+- CLI: auto-generate from the cobra tree (`spf13/cobra/doc.GenMarkdownTree`) via
+  a hidden `serverku docs` command or a `go generate`/Make target, so flags never
+  drift from the code.
+- Config: hand-write descriptions (Go doc comments aren't available at runtime),
+  but add a test that reflects over `ProjectConfig`'s yaml tags and fails if a
+  field has no entry in config.md — keeps the reference honest as fields are added.
+
+**Audience.** Mid-level engineer; "show me all the options" — completeness over
+tutorial. Complements the existing task-oriented guides under `guides/`.
+
 ## ENH-4 — Selectable VM size / region in `init` (live catalog)
 
 - **Status:** PLANNED

@@ -99,6 +99,31 @@ split between "the definition" and "the provisioned resources."
 
 Not bugs — current behavior is correct, but under-validated / worth improving.
 
+## ENH-2 — Live component inventory in `serverku status`
+
+- **Status:** DONE (staged, not yet committed)
+- **Where:** `internal/provider/provider.go` (new `ComponentLister` capability +
+  `Component`/`ComponentQuery`), `digitalocean.go`, `gcp.go`, `cmd/serverku/status.go`.
+
+**Why.** `status` showed only VM/IP/disk, so it was unclear what cloud resources
+a project actually created — especially the ones `destroy` leaves behind
+(orphans). Users had no built-in way to know what to clean up manually.
+
+**What.** Added an optional `ComponentLister` capability (type-assertion pattern
+like `DNSManager`/`FirewallManager`). `serverku status` now prints a
+`Components (live):` section listing each managed resource, whether it currently
+exists, and flagging orphans (`⚠ destroy won't remove`) with a manual-cleanup
+warning. Live-verified against the provider API:
+
+- DigitalOcean: VM, Volume (removed by destroy); SSH key, Snapshots (orphans).
+- GCP: VM, Disk, Firewall (removed by destroy); Snapshots (orphans). SSH key
+  rides in instance metadata and dies with the VM, so it is not listed.
+
+**Known limitation (follow-up).** DNS A records (when `dns.enabled`) are not yet
+included in the live inventory — they are also orphaned by `destroy`
+(see the DO SSH-key / snapshot / DNS orphan notes under the component
+inventory). Add DNS-record enumeration to both listers.
+
 ## ENH-1 — Preflight validation of compose ↔ sync_dir consistency
 
 - **Status:** OPEN

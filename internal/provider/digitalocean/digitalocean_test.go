@@ -114,3 +114,7 @@ func TestNewWithToken(t *testing.T) {
 		t.Error("expected a provider with an initialized client")
 	}
 }
+
+// Compile-time assertion that the provider implements the optional
+// ComponentLister capability used by `serverku status`.
+var _ provider.ComponentLister = (*Provider)(nil)

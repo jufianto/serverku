@@ -604,3 +604,51 @@ func (g *GCPProvider) ValidateCredentials(ctx context.Context) error {
 	}
 	return nil
 }
+
+// ListComponents reports the live state of the GCP resources serverku manages
+// for a project: the instance, disk and firewall rule (all removed by destroy),
+// plus any disk snapshots (orphans -- destroy leaves them). The SSH key rides
+// in instance metadata and dies with the VM, so it is not a separate resource.
+func (g *GCPProvider) ListComponents(ctx context.Context, q provider.ComponentQuery) ([]provider.Component, error) {
+	var comps []provider.Component
+
+	// VM instance.
+	vmPresent := false
+	if _, err := g.service.Instances.Get(g.projectID, g.zone, q.VMName).Context(ctx).Do(); err == nil {
+		vmPresent = true
+	}
+	comps = append(comps, provider.Component{Kind: "VM", Name: q.VMName, Present: vmPresent, RemovedByDestroy: true})
+
+	// Persistent disk.
+	if q.DiskName != "" {
+		present, detail := false, ""
+		if d, err := g.service.Disks.Get(g.projectID, g.zone, q.DiskName).Context(ctx).Do(); err == nil {
+			present = true
+			detail = fmt.Sprintf("%dGB", d.SizeGb)
+		}
+		comps = append(comps, provider.Component{Kind: "Volume", Name: q.DiskName, Detail: detail, Present: present, RemovedByDestroy: true})
+	}
+
+	// Firewall rule.
+	fwName := fmt.Sprintf("serverku-%s-fw", q.ProjectName)
+	fwPresent := false
+	if _, err := g.service.Firewalls.Get(g.projectID, fwName).Context(ctx).Do(); err == nil {
+		fwPresent = true
+	}
+	comps = append(comps, provider.Component{Kind: "Firewall", Name: fwName, Present: fwPresent, RemovedByDestroy: true})
+
+	// Disk snapshots -- orphan. Match by source disk name suffix.
+	if q.DiskName != "" {
+		if list, err := g.service.Snapshots.List(g.projectID).Context(ctx).Do(); err == nil {
+			count := 0
+			for _, s := range list.Items {
+				if strings.HasSuffix(s.SourceDisk, "/"+q.DiskName) {
+					count++
+				}
+			}
+			comps = append(comps, provider.Component{Kind: "Snapshot", Detail: fmt.Sprintf("%d found", count), Present: count > 0, RemovedByDestroy: false})
+		}
+	}
+
+	return comps, nil
+}

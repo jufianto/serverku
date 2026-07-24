@@ -104,6 +104,38 @@ type UsageReporter interface {
 	MonthToDateUsageUSD(ctx context.Context) (float64, error)
 }
 
+// ComponentQuery names the resources a caller wants ListComponents to look up.
+// The caller supplies the project name and the serverku-managed VM/disk names;
+// each provider derives its own provider-specific resource names (SSH key,
+// firewall, snapshots) from these.
+type ComponentQuery struct {
+	ProjectName string // e.g. "wpblog"
+	VMName      string // e.g. "serverku-wpblog"
+	DiskName    string // e.g. "serverku-wpblog-data" ("" when storage is disabled)
+}
+
+// Component describes one cloud resource serverku manages for a project, for
+// the live inventory shown by `serverku status`.
+type Component struct {
+	Kind             string // "VM", "Volume", "SSH key", "Firewall", "Snapshot"
+	Name             string // resource name/identifier ("" when not applicable)
+	Detail           string // extra info (size, count) -- may be empty
+	Present          bool   // whether the resource currently exists in the cloud
+	RemovedByDestroy bool   // whether `serverku destroy` cleans it up automatically
+}
+
+// ComponentLister is an optional capability implemented by cloud providers that
+// can enumerate the resources serverku created for a project. `serverku status`
+// uses it to show a live inventory and flag orphans (present resources that
+// `destroy` does not remove). Detection is via a type assertion on
+// CloudProvider; providers without it simply omit the Components section.
+type ComponentLister interface {
+	// ListComponents returns the live state of each serverku-managed resource
+	// for the project. Per-resource lookup failures should degrade gracefully
+	// (mark the component absent) rather than fail the whole call.
+	ListComponents(ctx context.Context, q ComponentQuery) ([]Component, error)
+}
+
 // VMConfig holds provider-agnostic configuration for creating a VM.
 type VMConfig struct {
 	Name           string   // VM instance name

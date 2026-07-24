@@ -447,3 +447,56 @@ func (p *Provider) AccountEmail(ctx context.Context) (string, error) {
 	}
 	return acct.Email, nil
 }
+
+// ListComponents reports the live state of the DigitalOcean resources serverku
+// manages for a project: the droplet and volume (removed by destroy), plus the
+// account SSH key and any volume snapshots (orphans -- destroy leaves them).
+func (p *Provider) ListComponents(ctx context.Context, q provider.ComponentQuery) ([]provider.Component, error) {
+	var comps []provider.Component
+
+	// VM (droplet).
+	vmPresent := false
+	if _, err := p.GetVM(ctx, q.VMName); err == nil {
+		vmPresent = true
+	}
+	comps = append(comps, provider.Component{Kind: "VM", Name: q.VMName, Present: vmPresent, RemovedByDestroy: true})
+
+	// Volume.
+	var volID string
+	if q.DiskName != "" {
+		present, detail := false, ""
+		if vols, _, err := p.client.Storage.ListVolumes(ctx, &godo.ListVolumeParams{Name: q.DiskName}); err == nil && len(vols) > 0 {
+			present, volID = true, vols[0].ID
+			detail = fmt.Sprintf("%dGB", int(vols[0].SizeGigaBytes))
+		}
+		comps = append(comps, provider.Component{Kind: "Volume", Name: q.DiskName, Detail: detail, Present: present, RemovedByDestroy: true})
+	}
+
+	// SSH key -- orphan. Name mirrors CreateVM: "serverku-" + VM name.
+	keyName := "serverku-" + q.VMName
+	keyPresent := false
+	if keys, _, err := p.client.Keys.List(ctx, &godo.ListOptions{PerPage: 200}); err == nil {
+		for _, k := range keys {
+			if k.Name == keyName {
+				keyPresent = true
+				break
+			}
+		}
+	}
+	comps = append(comps, provider.Component{Kind: "SSH key", Name: keyName, Present: keyPresent, RemovedByDestroy: false})
+
+	// Volume snapshots -- orphan. Attributable while the volume exists.
+	if volID != "" {
+		if snaps, _, err := p.client.Snapshots.ListVolume(ctx, &godo.ListOptions{PerPage: 200}); err == nil {
+			count := 0
+			for _, s := range snaps {
+				if s.ResourceID == volID {
+					count++
+				}
+			}
+			comps = append(comps, provider.Component{Kind: "Snapshot", Detail: fmt.Sprintf("%d found", count), Present: count > 0, RemovedByDestroy: false})
+		}
+	}
+
+	return comps, nil
+}

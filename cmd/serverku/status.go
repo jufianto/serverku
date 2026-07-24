@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -9,6 +10,7 @@ import (
 	"github.com/jufianto/serverku/internal/config"
 	"github.com/jufianto/serverku/internal/orchestrator"
 	"github.com/jufianto/serverku/internal/pricing"
+	"github.com/jufianto/serverku/internal/provider"
 	"github.com/jufianto/serverku/internal/provisioner"
 	"github.com/spf13/cobra"
 )
@@ -38,6 +40,10 @@ func newStatusCmd() *cobra.Command {
 
 			rates := newRateCache(factory)
 			printProjectStatus(cfg, state, rates.resolveRate(cmd.Context(), cfg))
+
+			// Live inventory of the cloud resources serverku manages for this
+			// project, so it's clear what exists and what destroy leaves behind.
+			printComponents(cmd.Context(), cfg, state, factory)
 
 			// Real account-level month-to-date usage, when the provider's API
 			// reports it (currently DigitalOcean).
@@ -157,5 +163,74 @@ func printProjectStatus(cfg *config.ProjectConfig, state *config.ProjectState, r
 	}
 	if state.ErrorMsg != "" {
 		fmt.Printf("Error:     %s\n", state.ErrorMsg)
+	}
+}
+
+// printComponents shows a live inventory of the cloud resources serverku
+// manages for the project, flagging any that `serverku destroy` does not remove
+// (orphans the user must clean up manually). It is best-effort: if the provider
+// can't be built or doesn't support the ComponentLister capability, it prints
+// nothing rather than failing the status command.
+func printComponents(ctx context.Context, cfg *config.ProjectConfig, state *config.ProjectState, factory orchestrator.ProviderFactory) {
+	cp, err := factory(ctx, cfg)
+	if err != nil {
+		return
+	}
+	lister, ok := cp.(provider.ComponentLister)
+	if !ok {
+		return
+	}
+
+	// Derive resource names from state when available, else from the naming
+	// convention, so the inventory works even before/after the VM exists.
+	vmName := state.VMName
+	if vmName == "" {
+		vmName = "serverku-" + cfg.Name
+	}
+	diskName := state.DiskName
+	if diskName == "" && cfg.Storage.Enabled {
+		diskName = "serverku-" + cfg.Name + "-data"
+	}
+
+	comps, err := lister.ListComponents(ctx, provider.ComponentQuery{
+		ProjectName: cfg.Name,
+		VMName:      vmName,
+		DiskName:    diskName,
+	})
+	if err != nil || len(comps) == 0 {
+		return
+	}
+
+	fmt.Println("\nComponents (live):")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	orphans := 0
+	for _, c := range comps {
+		name := c.Name
+		if c.Detail != "" {
+			if name != "" {
+				name += "  "
+			}
+			name += "(" + c.Detail + ")"
+		}
+		if name == "" {
+			name = "-"
+		}
+
+		var st string
+		switch {
+		case c.Present && !c.RemovedByDestroy:
+			st = "present  ⚠ orphan (destroy won't remove)"
+			orphans++
+		case c.Present:
+			st = "present"
+		default:
+			st = "none"
+		}
+		fmt.Fprintf(w, "  %s\t%s\t%s\n", c.Kind, name, st)
+	}
+	_ = w.Flush()
+
+	if orphans > 0 {
+		fmt.Printf("\n  ⚠ %d component(s) are NOT removed by `serverku destroy` -- delete manually.\n", orphans)
 	}
 }

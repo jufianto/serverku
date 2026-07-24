@@ -101,6 +101,45 @@ explicitly want the definition deleted too.
 
 Not bugs — current behavior is correct, but under-validated / worth improving.
 
+## ENH-3 — Local-first project config (`./serverku.yaml`)
+
+- **Status:** PLANNED
+- **Where:** `internal/config/store.go` (`LoadProject`), a new cmd-level
+  resolver, and the project commands in `cmd/serverku/`.
+
+**Goal.** Let a project be defined by a `serverku.yaml` living in the working
+directory (version-controlled next to the code / compose file), falling back to
+the central `~/.serverku/projects/<name>.yaml` store. Chosen model: **ambient**
+(fixed filename `serverku.yaml`; the project name comes from the file, so the
+`<name>` CLI arg becomes optional) and **current-directory only** (no parent
+walk).
+
+**Resolution rule** (shared `resolveProject(args)` helper):
+1. `./serverku.yaml` exists → use it; its `name:` identifies the project. If a
+   `<name>` arg is also given and mismatches the file's `name:`, error.
+2. No local file but `<name>` given → central `~/.serverku/projects/<name>.yaml`
+   (current behavior).
+3. Neither → error: "no serverku.yaml in this directory; pass a project name or
+   run from a project directory."
+
+**Changes.**
+- Project-name arg becomes optional (`MaximumNArgs(1)`) on up, down, deploy,
+  destroy, status, logs, ssh, tunnel, backup, restore, check, ntfy, notify, open.
+- Store: `LoadProjectFrom(path)` / `SaveProjectTo(path)`; resolver returns
+  `(cfg, name, sourcePath)`; `SaveProject` writes back to the local file when the
+  config came from one.
+- **State and keys stay central** in `~/.serverku/` keyed by `cfg.Name` — never
+  written next to code (runtime/secret data must not land in a repo).
+- `--config-dir` still controls the central base dir; local lookup is
+  independent of it.
+
+**Known limitations (v1).**
+- `serverku list` shows central projects only; a local-only project won't appear
+  unless you're in its dir (could add a `(local)` marker later).
+- `serverku init` still writes central; a `serverku init --local` to scaffold
+  `./serverku.yaml` is a follow-up.
+- No parent-directory walk (cwd only).
+
 ## ENH-2 — Live component inventory in `serverku status`
 
 - **Status:** DONE (staged, not yet committed)

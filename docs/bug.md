@@ -101,6 +101,38 @@ explicitly want the definition deleted too.
 
 Not bugs — current behavior is correct, but under-validated / worth improving.
 
+## ENH-4 — Selectable VM size / region in `init` (live catalog)
+
+- **Status:** PLANNED
+- **Where:** new `CatalogLister` provider capability, `cmd/serverku/init.go`
+  (interactive + `--size`/`--region` validation), a docs guide.
+
+**Problem.** Interactive `init` asks for VM size and region as free-text
+(`huh.NewInput`), so the user must already know a valid slug
+(`s-1vcpu-1gb`, `e2-medium`, `sgp1`, ...). A wrong value only fails later at
+create time (see BUG-1). There's no in-tool discovery.
+
+**Design (layered — live, static fallback, docs).**
+1. **Live picklist.** Add optional `CatalogLister` capability:
+   `ListRegions(ctx)` and `ListSizes(ctx, region)`, reusing the existing
+   `Sizes.List` (DO, already used in `pricing.go`) and `Regions.List`/machine
+   types (GCP). In interactive `init`, replace the size/region inputs with
+   `huh.NewSelect` showing human labels (slug + vCPU/RAM/disk + $/mo). Order:
+   **region first, then sizes** (GCP machine types are region-scoped; DO
+   availability varies by region). Curate to a sensible subset (DO basic `s-*`;
+   GCP `e2`/`n2`) with a "show all / enter manually" escape.
+2. **Static fallback.** `init` can run before `serverku setup`, so if the live
+   fetch fails (no creds / offline), fall back to a small curated shortlist
+   baked into serverku (5-8 sizes/provider with prices) as a Select + free-text.
+3. **Docs guide.** "Choosing a VM size & region" page listing recommended picks
+   and linking to the live provider pages (DO sizes/pricing, GCP machine types).
+4. **Non-interactive bonus.** Validate `--size`/`--region` against the catalog
+   and print nearest valid suggestions on error, instead of a late create-time
+   422 (addresses the BUG-1 class of failure).
+
+**Tradeoff.** Raw catalogs are large (DO ~90 sizes, GCP hundreds) -- curation /
+filtering is essential or the list is as overwhelming as the blank field.
+
 ## ENH-3 — Local-first project config (`./serverku.yaml`)
 
 - **Status:** PLANNED

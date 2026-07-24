@@ -77,6 +77,12 @@ interactive prompts.`,
 				}
 			}
 
+			// Catch an invalid --region/--size against the live catalog now,
+			// with suggestions, instead of a cryptic 422 at create time.
+			if err := validateInitCatalog(provider, region, vmSize); err != nil {
+				return err
+			}
+
 			// Non-interactive mode with flags
 			cfg := &config.ProjectConfig{
 				Name:      name,
@@ -186,7 +192,7 @@ func runInteractiveInit(name string) error {
 
 	// Load the region/size catalog: live from the provider API when possible,
 	// otherwise a built-in curated list.
-	cat := loadCatalog(providerName, gcpProjectID)
+	cat := loadCatalog(providerName)
 	if cat.live {
 		fmt.Printf("Loaded live regions and sizes from %s.\n", providerName)
 	} else {

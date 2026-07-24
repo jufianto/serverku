@@ -24,7 +24,7 @@ type initCatalog struct {
 // live provider API when credentials allow (currently DigitalOcean, which needs
 // only a token), and falls back to a curated static list otherwise -- so init
 // works before `serverku setup` and offline.
-func loadCatalog(providerName, projectID string) *initCatalog {
+func loadCatalog(providerName string) *initCatalog {
 	ctx := context.Background()
 
 	if providerName == "digitalocean" {
@@ -57,6 +57,84 @@ func loadCatalog(providerName, projectID string) *initCatalog {
 		sizesFor: func(string) []provider.CatalogSize { return staticSizes[providerName] },
 		live:     false,
 	}
+}
+
+// validateInitCatalog checks a non-interactive --region/--size selection against
+// the live provider catalog and returns a helpful error (with suggestions) when
+// they are invalid -- catching a bad slug at init time instead of a cryptic 422
+// at create time. It is best-effort: when the live catalog is unavailable (no
+// token, offline, or a provider without a live catalog) it returns nil, since a
+// static list is too small to reject against.
+func validateInitCatalog(providerName, region, size string) error {
+	if providerName != "digitalocean" {
+		return nil // live validation only for DigitalOcean in this version
+	}
+	token, err := resolveDOToken()
+	if err != nil || token == "" {
+		return nil
+	}
+	p, err := digitalocean.NewWithToken(token)
+	if err != nil {
+		return nil
+	}
+	ctx := context.Background()
+
+	regions, err := p.ListRegions(ctx)
+	if err != nil {
+		return nil // can't reach the API -- don't block init
+	}
+	if region != "" && !containsSlug(regionSlugs(regions), region) {
+		return fmt.Errorf("region %q is not a valid DigitalOcean region.\nAvailable: %s",
+			region, strings.Join(regionSlugs(regions), ", "))
+	}
+
+	if size != "" {
+		sizes, err := p.ListSizes(ctx, region)
+		if err == nil && len(sizes) > 0 && !containsSize(sizes, size) {
+			return fmt.Errorf("size %q is not available in region %q.\nExamples: %s\n(see the size/region guide for the full list)",
+				size, region, strings.Join(sizeSuggestions(sizes, 6), ", "))
+		}
+	}
+	return nil
+}
+
+func regionSlugs(regions []provider.CatalogRegion) []string {
+	out := make([]string, len(regions))
+	for i, r := range regions {
+		out[i] = r.Slug
+	}
+	return out
+}
+
+func containsSlug(slugs []string, want string) bool {
+	for _, s := range slugs {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsSize(sizes []provider.CatalogSize, want string) bool {
+	for _, s := range sizes {
+		if s.Slug == want {
+			return true
+		}
+	}
+	return false
+}
+
+// sizeSuggestions returns up to n size slugs (already sorted cheapest-first) to
+// show as examples in a validation error.
+func sizeSuggestions(sizes []provider.CatalogSize, n int) []string {
+	var out []string
+	for _, s := range sizes {
+		out = append(out, s.Slug)
+		if len(out) == n {
+			break
+		}
+	}
+	return out
 }
 
 // regionOptions renders the catalog regions as huh select options.

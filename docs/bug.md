@@ -147,7 +147,23 @@ tutorial. Complements the existing task-oriented guides under `guides/`.
 
 ## ENH-4 — Selectable VM size / region in `init` (live catalog)
 
-- **Status:** PLANNED
+- **Status:** DONE for DigitalOcean (staged); GCP live catalog is a follow-up.
+
+**Implemented.** `CatalogLister` capability (`ListRegions`/`ListSizes`),
+DigitalOcean implementation over the existing Regions/Sizes APIs, and a
+two-stage interactive `init`: pick provider → load catalog (live for DO, curated
+static fallback otherwise) → select region and size from real priced options
+(size list reacts to region via `OptionsFunc`). Non-interactive `--region`/
+`--size` are validated against the live DO catalog with suggestions (heads off
+the BUG-1-class 422). Added the `guides/choosing_vm_size_region.md` reference.
+
+**Follow-ups:** implement `CatalogLister` for GCP (machine types are
+zone-scoped and the list is large, so it needs the project + a chosen zone
+before it can list); optional "enter manually" escape in the picker.
+
+Original plan below.
+
+
 - **Where:** new `CatalogLister` provider capability, `cmd/serverku/init.go`
   (interactive + `--size`/`--region` validation), a docs guide.
 

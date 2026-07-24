@@ -62,12 +62,17 @@ type ProvisionOpts struct {
 	// SSHUser is the username to connect with (e.g., "serverku" for GCP).
 	SSHUser string
 
+	// Provider is the cloud provider name ("gcp" or "digitalocean"). It selects
+	// the stable /dev/disk/by-id device path for the attached volume, which
+	// differs per provider. Only relevant when StorageEnabled is true.
+	Provider string
+
 	// StorageEnabled indicates whether a persistent disk should be mounted.
 	StorageEnabled bool
 
-	// DiskName is the GCP disk resource name (e.g., "serverku-myproject-data").
-	// Used to construct the stable device path /dev/disk/by-id/google-<DiskName>.
-	// Only relevant when StorageEnabled is true.
+	// DiskName is the disk/volume resource name (e.g., "serverku-myproject-data").
+	// Used to construct the stable device path (see diskDevicePath) for the
+	// selected Provider. Only relevant when StorageEnabled is true.
 	DiskName string
 
 	// MountPath is the path inside the VM to mount the persistent disk
@@ -193,7 +198,7 @@ func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) erro
 
 	if opts.StorageEnabled {
 		log.Printf("[provisioner] mounting disk %q at %s...", opts.DiskName, opts.MountPath)
-		script := mountDiskScript(opts.DiskName, opts.MountPath)
+		script := mountDiskScript(opts.Provider, opts.DiskName, opts.MountPath)
 		if out, err := runCommand(client, script); err != nil {
 			log.Printf("[provisioner] disk mount output:\n%s", out)
 			return fmt.Errorf("failed to mount disk: %w", err)

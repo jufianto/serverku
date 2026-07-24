@@ -314,6 +314,7 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		Host:            ip,
 		PrivateKeyPath:  privKeyPath,
 		SSHUser:         "serverku",
+		Provider:        cfg.Provider,
 		StorageEnabled:  cfg.Storage.Enabled,
 		DiskName:        state.DiskName,
 		MountPath:       cfg.Storage.MountPath,

@@ -5,7 +5,21 @@ import "fmt"
 // installDockerScript installs Docker Engine and Docker Compose plugin on an
 // Ubuntu VM using the official get.docker.com convenience script.
 // The serverku SSH user is added to the docker group for non-root access.
+//
+// A freshly booted Ubuntu droplet is still running cloud-init and
+// unattended-upgrades, which hold the apt/dpkg lock. sshd comes up before those
+// finish, so we wait for cloud-init to complete and for the dpkg lock to be
+// released before running apt -- otherwise apt fails with
+// "E: Could not get lock /var/lib/dpkg/lock-frontend".
 const installDockerScript = `set -e
+sudo cloud-init status --wait >/dev/null 2>&1 || true
+for i in $(seq 1 60); do
+  if ! sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock >/dev/null 2>&1; then
+    break
+  fi
+  echo "Waiting for apt/dpkg lock to be released (attempt $i)..."
+  sleep 5
+done
 sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl ca-certificates
 curl -fsSL https://get.docker.com | sudo sh
@@ -13,14 +27,29 @@ sudo usermod -aG docker serverku
 sudo systemctl enable docker
 sudo systemctl start docker`
 
+// diskDevicePath returns the stable /dev/disk/by-id path for an attached
+// volume, which differs per provider:
+//   - GCP exposes it as /dev/disk/by-id/google-<diskName>
+//   - DigitalOcean exposes it as /dev/disk/by-id/scsi-0DO_Volume_<volumeName>
+//
+// Using the by-id path avoids the instability of /dev/sdb, which can shift.
+func diskDevicePath(provider, diskName string) string {
+	switch provider {
+	case "digitalocean":
+		return fmt.Sprintf("/dev/disk/by-id/scsi-0DO_Volume_%s", diskName)
+	default: // gcp (and anything else defaults to the GCP convention)
+		return fmt.Sprintf("/dev/disk/by-id/google-%s", diskName)
+	}
+}
+
 // mountDiskScript returns a shell script that formats (if new) and mounts the
-// GCP persistent disk to mountPath. The stable device path
-// /dev/disk/by-id/google-<diskName> is used instead of /dev/sdb which can shift.
+// provider's persistent volume to mountPath, using the stable by-id device path
+// (see diskDevicePath) instead of /dev/sdb which can shift.
 //
 // Safety: blkid is run first. If a filesystem already exists, mkfs is skipped
 // to protect user data across VM lifecycles.
-func mountDiskScript(diskName string, mountPath string) string {
-	device := fmt.Sprintf("/dev/disk/by-id/google-%s", diskName)
+func mountDiskScript(provider, diskName, mountPath string) string {
+	device := diskDevicePath(provider, diskName)
 	return fmt.Sprintf(`set -e
 DEVICE="%s"
 MOUNT_PATH="%s"
@@ -69,10 +98,16 @@ cat > "%s/docker-compose.yml" << 'SERVERKU_COMPOSE_EOF'
 
 // composeUpScript returns a shell script that runs docker compose up -d in
 // the given directory.
+//
+// docker is invoked via sudo: `usermod -aG docker serverku` only takes effect
+// in a new login session, but provisioning reuses the SSH session opened before
+// the group was added, so the serverku user cannot yet reach the docker socket.
+// The daemon runs as root, so sudo is the reliable path. (Interactive
+// `serverku ssh` later gets a fresh login where the docker group is active.)
 func composeUpScript(composeDir string) string {
 	return fmt.Sprintf(`set -e
 cd "%s"
-docker compose up -d
+sudo docker compose up -d
 `, composeDir)
 }
 
@@ -84,7 +119,7 @@ func teardownScript(composeDir string, mountPath string, hasCompose bool, hasSto
 	if hasCompose {
 		script += fmt.Sprintf(`
 echo "Stopping Docker containers..."
-cd "%s" && docker compose down || true
+cd "%s" && sudo docker compose down || true
 `, composeDir)
 	}
 	if hasStorage {
@@ -111,7 +146,7 @@ func initCaddyProxyScript() string {
 echo "Initializing caddy proxy network..."
 caddyku init
 cd ~/projects/caddy-proxy
-docker compose up -d
+sudo docker compose up -d
 `
 }
 

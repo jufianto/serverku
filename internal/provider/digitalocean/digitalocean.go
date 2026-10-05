@@ -378,9 +378,27 @@ func (p *Provider) AttachDisk(ctx context.Context, vmName, diskName string) erro
 		return err
 	}
 
+	return p.attachVolume(ctx, dropletID, volID)
+}
+
+// AttachDiskByID uses the UUID returned by volume creation (or saved in state).
+// A newly created volume may not yet appear in the name-filtered listing.
+func (p *Provider) AttachDiskByID(ctx context.Context, vmName, diskID string) error {
+	if diskID == "" {
+		return errors.New("volume ID is empty")
+	}
+	log.Printf("[digitalocean] attaching volume ID %q for droplet %q", diskID, vmName)
+	dropletID, err := p.getDropletIDByName(ctx, vmName)
+	if err != nil {
+		return err
+	}
+	return p.attachVolume(ctx, dropletID, diskID)
+}
+
+func (p *Provider) attachVolume(ctx context.Context, dropletID int, volID string) error {
 	action, _, err := p.client.StorageActions.Attach(ctx, volID, dropletID)
 	if err != nil {
-		return fmt.Errorf("failed to attach volume: %w", err)
+		return fmt.Errorf("failed to attach volume %q: %w", volID, err)
 	}
 
 	// Wait for attachment to complete

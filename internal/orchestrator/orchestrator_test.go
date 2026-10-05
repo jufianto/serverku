@@ -184,6 +184,12 @@ func TestUpWithStorage(t *testing.T) {
 		SizeGB:    20,
 		MountPath: "/data",
 	})
+	mock.attachDiskFunc = func(_ context.Context, vmName, diskName string) error {
+		if vmName != "serverku-test-project" || diskName != "serverku-test-project-data" {
+			t.Errorf("name-based attachment got %q, %q", vmName, diskName)
+		}
+		return nil
+	}
 
 	ctx := context.Background()
 	result, err := orch.Up(ctx, "test-project", factory)
@@ -352,6 +358,97 @@ func TestUpDiskAttachFails(t *testing.T) {
 	}
 	if state.DiskName == "" {
 		t.Error("disk should be preserved when attach fails")
+	}
+	if state.VMID != "" || state.VMName != "" || state.ExternalIP != "" || state.StoppedAt == nil {
+		t.Fatalf("deleted VM remains tracked: %+v", state)
+	}
+}
+
+type mockIDAttacher struct {
+	*mockProvider
+	attachedID string
+}
+
+func (m *mockIDAttacher) AttachDiskByID(_ context.Context, _ string, diskID string) error {
+	m.attachedID = diskID
+	return nil
+}
+
+func TestUpUsesSavedDiskIDForAttachment(t *testing.T) {
+	for _, reuse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reuse=%t", reuse), func(t *testing.T) {
+			orch, mock, _ := testSetup(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"})
+			wantID := "disk-456"
+			if reuse {
+				state := config.NewState("test-project", "digitalocean", "sgp1", "")
+				state.DiskID = "existing-volume-id"
+				state.DiskName = "serverku-test-project-data"
+				wantID = state.DiskID
+				if err := orch.store.SaveState(state); err != nil {
+					t.Fatal(err)
+				}
+			}
+			attacher := &mockIDAttacher{mockProvider: mock}
+			factory := func(context.Context, *config.ProjectConfig) (provider.CloudProvider, error) { return attacher, nil }
+			if _, err := orch.Up(context.Background(), "test-project", factory); err != nil {
+				t.Fatal(err)
+			}
+			if attacher.attachedID != wantID {
+				t.Fatalf("attached ID = %q, want %q", attacher.attachedID, wantID)
+			}
+			for _, call := range mock.calls {
+				if call == "AttachDisk" || (reuse && call == "CreateDisk") {
+					t.Fatalf("unexpected call %s", call)
+				}
+			}
+		})
+	}
+}
+
+func TestUpFallsBackToDiskNameWithoutSavedID(t *testing.T) {
+	orch, mock, _ := testSetup(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"})
+	state := config.NewState("test-project", "digitalocean", "sgp1", "")
+	state.DiskName = "serverku-test-project-data"
+	if err := orch.store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+	var usedName bool
+	mock.attachDiskFunc = func(_ context.Context, _, diskName string) error {
+		usedName = diskName == state.DiskName
+		return nil
+	}
+	attacher := &mockIDAttacher{mockProvider: mock}
+	factory := func(context.Context, *config.ProjectConfig) (provider.CloudProvider, error) { return attacher, nil }
+	if _, err := orch.Up(context.Background(), "test-project", factory); err != nil {
+		t.Fatal(err)
+	}
+	if !usedName || attacher.attachedID != "" {
+		t.Fatal("legacy state without a disk ID must use name-based attachment")
+	}
+}
+
+func TestUpDiskAttachFailureReportsCleanupFailure(t *testing.T) {
+	orch, mock, factory := testSetup(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"})
+	mock.attachDiskFunc = func(context.Context, string, string) error { return fmt.Errorf("attach rejected") }
+	mock.destroyVMFunc = func(context.Context, string) error { return fmt.Errorf("deletion forbidden") }
+	_, err := orch.Up(context.Background(), "test-project", factory)
+	if err == nil || !strings.Contains(err.Error(), "attach rejected") || !strings.Contains(err.Error(), "automatic VM cleanup failed") || !strings.Contains(err.Error(), "deletion forbidden") {
+		t.Fatalf("missing attachment or cleanup error: %v", err)
+	}
+	state, err := orch.store.LoadState("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != config.StatusError || state.VMID == "" || state.VMName == "" || state.DiskID == "" {
+		t.Fatalf("resources must remain tracked after failed cleanup: %+v", state)
+	}
+	if !strings.Contains(state.ErrorMsg, "deletion forbidden") {
+		t.Fatalf("cleanup failure not saved: %s", state.ErrorMsg)
+	}
+	for _, call := range mock.calls {
+		if call == "DeleteDisk" {
+			t.Fatal("persistent disk deleted")
+		}
 	}
 }
 

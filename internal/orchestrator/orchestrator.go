@@ -242,12 +242,28 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	if cfg.Storage.Enabled && state.DiskName != "" {
 		log.Printf("[orchestrator] attaching disk %q to VM %q", state.DiskName, vm.Name)
 
-		if err := cp.AttachDisk(ctx, vm.Name, state.DiskName); err != nil {
+		var attachErr error
+		if attacher, ok := cp.(provider.DiskAttacherByID); ok && state.DiskID != "" {
+			attachErr = attacher.AttachDiskByID(ctx, vm.Name, state.DiskID)
+		} else {
+			attachErr = cp.AttachDisk(ctx, vm.Name, state.DiskName)
+		}
+		if attachErr != nil {
 			// Disk attach failed -- destroy VM but keep disk
-			log.Printf("[orchestrator] disk attach failed, destroying VM: %v", err)
-			_ = cp.DestroyVM(ctx, vm.Name)
-			o.setErrorState(state, fmt.Sprintf("failed to attach disk: %v", err))
-			return nil, fmt.Errorf("failed to attach disk: %w", err)
+			log.Printf("[orchestrator] disk attach failed; deleting VM %q (persistent disk preserved)", vm.Name)
+			if cleanupErr := cp.DestroyVM(ctx, vm.Name); cleanupErr != nil {
+				failure := fmt.Errorf("failed to attach disk: %w; automatic VM cleanup failed: %v (VM %q may still exist)", attachErr, cleanupErr, vm.Name)
+				o.setErrorState(state, failure.Error())
+				return nil, failure
+			}
+			state.VMID = ""
+			state.VMName = ""
+			state.ExternalIP = ""
+			now := time.Now()
+			state.StoppedAt = &now
+			log.Printf("[orchestrator] VM %q deleted; cleared local VM state (persistent disk preserved)", vm.Name)
+			o.setErrorState(state, fmt.Sprintf("failed to attach disk: %v", attachErr))
+			return nil, fmt.Errorf("failed to attach disk: %w", attachErr)
 		}
 	}
 

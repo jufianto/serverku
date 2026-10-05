@@ -155,6 +155,19 @@ no volumes, nothing billing.
 > equivalent here — the monitor data dies with the VM. That's fine for a
 > demo, and exactly what the next tutorial fixes.
 
+## Troubleshooting persistent volume attachment
+
+If you later enable persistent storage and see `volume "serverku-kuma-data"
+not found` during attachment, check the volume in the DigitalOcean console
+before deleting anything. Older Serverku versions rediscovered the volume by
+name even though its UUID was already saved in local state. The current version
+attaches the saved UUID directly, including when reusing a disk after `down`.
+
+After updating Serverku, run `serverku status kuma` to check the VM cleanup,
+then retry `serverku up kuma`. Keep the existing disk and state: `destroy`
+deletes the persistent disk and its app data. If automatic VM cleanup fails,
+Serverku reports that failure and retains the VM reference for recovery.
+
 ## What you learned
 
 - A serverku project = a Docker Compose project + one YAML config.

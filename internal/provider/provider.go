@@ -50,6 +50,13 @@ type CloudProvider interface {
 	CreateDiskFromSnapshot(ctx context.Context, config DiskConfig, snapshot string) (*Disk, error)
 }
 
+// DiskAttacherByID lets providers attach the exact disk recorded in state,
+// without rediscovering it through a potentially stale name listing. Providers
+// that require disk names (such as GCP) continue using CloudProvider.AttachDisk.
+type DiskAttacherByID interface {
+	AttachDiskByID(ctx context.Context, vmName, diskID string) error
+}
+
 // DNSManager is an optional capability implemented by cloud providers that can
 // also manage DNS A records for the project's domains. The orchestrator detects
 // support via a type assertion on the CloudProvider; providers without DNS

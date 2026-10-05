@@ -332,3 +332,16 @@ func TestNewState(t *testing.T) {
 		t.Errorf("expected provider gcp, got %q", state.Provider)
 	}
 }
+
+func TestProjectConfigDigitalOceanImageDefaults(t *testing.T) {
+	for _, tc := range []struct{ image, want string }{
+		{"", "ubuntu-22-04-x64"},
+		{"ubuntu-24-04-x64", "ubuntu-24-04-x64"},
+	} {
+		cfg := &ProjectConfig{Provider: "digitalocean", VM: VMConfig{Image: tc.image}}
+		cfg.SetDefaults()
+		if cfg.VM.Image != tc.want {
+			t.Errorf("image %q: got %q, want %q", tc.image, cfg.VM.Image, tc.want)
+		}
+	}
+}

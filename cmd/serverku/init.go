@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/charmbracelet/huh"
 	"github.com/jufianto/serverku/internal/config"
@@ -47,7 +48,7 @@ interactive prompts.`,
 
 			// Check if project already exists
 			if store.ProjectExists(name) {
-				return fmt.Errorf("project %q already exists", name)
+				return fmt.Errorf("project %q already exists; use 'serverku edit %s' or 'serverku reinit %s'", name, name, name)
 			}
 
 			// Interactive mode if we're in a TTY and non-interactive flag is not set
@@ -58,6 +59,11 @@ interactive prompts.`,
 
 			if isTerminal && !nonInteractive && !cmd.Flags().Changed("provider") {
 				return runInteractiveInit(name)
+			}
+
+			// A project ID belongs to GCP; never persist it for DigitalOcean.
+			if provider == "digitalocean" {
+				projectID = ""
 			}
 
 			// The --spot default (true) only makes sense for GCP; DigitalOcean
@@ -146,195 +152,165 @@ interactive prompts.`,
 }
 
 func runInteractiveInit(name string) error {
-	var (
-		providerName   string
-		gcpProjectID   string
-		region         string
-		zone           string
-		vmSize         string
-		spot           bool
-		storageEnabled bool
-		storageGB      string
-		mountPath      string
-		composeFile    string
-	)
-
-	// Pre-fill the GCP project from `serverku setup gcp`, if it ran.
-	gcpProjectID = defaultGCPProject()
-
-	// Stage 1: pick the provider (and GCP project) first, so we know which
-	// region/size catalog to load before asking for them.
-	stage1 := huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Cloud Provider").
-				Options(
-					huh.NewOption("DigitalOcean", "digitalocean"),
-					huh.NewOption("GCP", "gcp"),
-				).
-				Value(&providerName),
-		),
-		huh.NewGroup(
-			huh.NewInput().
-				Title("GCP Project ID").
-				Value(&gcpProjectID).
-				Validate(func(s string) error {
-					if providerName == "gcp" && s == "" {
-						return fmt.Errorf("project ID is required for GCP")
-					}
-					return nil
-				}),
-		).WithHideFunc(func() bool { return providerName != "gcp" }),
-	)
-	if err := stage1.Run(); err != nil {
+	initial := &config.ProjectConfig{Name: name, VM: config.VMConfig{Spot: true},
+		Storage: config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"}, ComposeFile: "docker-compose.yml"}
+	cfg, err := promptProjectConfig(initial)
+	if err != nil {
 		return err
 	}
+	topic, err := config.GenerateNtfyTopic(name)
+	if err != nil {
+		return err
+	}
+	cfg.Notifications.Ntfy.Topic = topic
+	if _, _, err := store.EnsureSSHKeys(); err != nil {
+		return fmt.Errorf("failed to generate SSH keys: %w", err)
+	}
+	if err := store.SaveProject(cfg); err != nil {
+		return err
+	}
+	fmt.Printf("Project %q created at %s/projects/%s.yaml\n", name, store.BaseDir(), name)
+	fmt.Printf("Notifications: run `serverku ntfy %s` to set up push notifications\n", name)
+	fmt.Printf("Edit with 'serverku edit %s', then run 'serverku up %s'.\n", name, name)
+	return nil
+}
 
-	// Load the region/size catalog: live from the provider API when possible,
-	// otherwise a built-in curated list.
+func promptProjectConfig(initial *config.ProjectConfig) (*config.ProjectConfig, error) {
+	providerName, projectID := initial.Provider, initial.ProjectID
+	region, zone, size := initial.Region, initial.Zone, initial.VM.Size
+	spot, storage := initial.VM.Spot, initial.Storage.Enabled
+	storageGB := fmt.Sprintf("%d", initial.Storage.SizeGB)
+	mount, compose := initial.Storage.MountPath, initial.ComposeFile
+	if projectID == "" {
+		projectID = defaultGCPProject()
+	}
+
+	// Separate dependent stages so hidden GCP/storage questions are omitted
+	// in both the terminal UI and huh's accessible (plain-text) mode.
+	if err := huh.NewForm(huh.NewGroup(huh.NewSelect[string]().Title("Cloud Provider").
+		Options(huh.NewOption("DigitalOcean", "digitalocean"), huh.NewOption("GCP", "gcp")).Value(&providerName))).Run(); err != nil {
+		return nil, err
+	}
+	if providerName != initial.Provider && initial.Provider != "" {
+		region, zone, size = "", "", ""
+		spot = providerName == "gcp"
+	}
+	if providerName == "gcp" {
+		if err := huh.NewForm(huh.NewGroup(huh.NewInput().Title("GCP Project ID").Value(&projectID).
+			Validate(func(value string) error {
+				if value == "" {
+					value = projectID
+				}
+				if value == "" {
+					return fmt.Errorf("project ID is required for GCP")
+				}
+				return nil
+			}))).Run(); err != nil {
+			return nil, err
+		}
+	} else {
+		projectID, zone, spot = "", "", false
+	}
+
 	cat := loadCatalog(providerName)
 	if cat.live {
 		fmt.Printf("Loaded live regions and sizes from %s.\n", providerName)
 	} else {
 		fmt.Printf("Using built-in %s size/region suggestions (edit the YAML for anything not listed).\n", providerName)
 	}
+	if err := huh.NewForm(huh.NewGroup(huh.NewSelect[string]().Title("Region").
+		Options(withCurrentOption(cat.regionOptions(), region)...).Value(&region))).Run(); err != nil {
+		return nil, err
+	}
+	var groups []*huh.Group
+	if providerName == "gcp" {
+		groups = append(groups, huh.NewGroup(huh.NewInput().Title("Zone").Value(&zone).
+			Description(fmt.Sprintf("e.g., %s-b", region)).
+			Validate(func(value string) error {
+				if value == "" {
+					value = zone
+				}
+				if value == "" {
+					return fmt.Errorf("zone is required for GCP")
+				}
+				return nil
+			})))
+	}
+	sizeOptions := cat.sizeOptions(region)
+	if region == initial.Region && providerName == initial.Provider {
+		sizeOptions = withCurrentOption(sizeOptions, size)
+	}
+	groups = append(groups, huh.NewGroup(huh.NewSelect[string]().Title("VM Size").Options(sizeOptions...).Value(&size)))
+	if providerName == "gcp" {
+		groups = append(groups, huh.NewGroup(huh.NewConfirm().Title("Use SPOT / Preemptible instances?").Value(&spot)))
+	}
+	groups = append(groups, huh.NewGroup(huh.NewConfirm().Title("Enable persistent storage?").Value(&storage)))
+	if err := huh.NewForm(groups...).Run(); err != nil {
+		return nil, err
+	}
 
-	// Sensible defaults for the non-catalog fields.
-	spot = true
-	storageEnabled = true
-	storageGB = "20"
-	mountPath = "/data"
-	composeFile = "docker-compose.yml"
-
-	// Stage 2: region/size come from the catalog (selectable, not free text);
-	// the size list reacts to the chosen region via OptionsFunc.
-	stage2 := huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Region").
-				Options(cat.regionOptions()...).
-				Value(&region),
-			huh.NewInput().
-				Title("Zone (GCP only)").
-				Value(&zone).
-				DescriptionFunc(func() string {
-					if region != "" {
-						return fmt.Sprintf("e.g., %s-b", region)
+	groups = nil
+	if storage {
+		if initial.Storage.SizeGB == 0 {
+			storageGB = "20"
+		}
+		if mount == "" {
+			mount = "/data"
+		}
+		groups = append(groups, huh.NewGroup(huh.NewInput().Title("Storage Size (GB)").Value(&storageGB).
+			Validate(func(value string) error {
+				if value == "" {
+					value = storageGB
+				}
+				gb, err := strconv.Atoi(value)
+				if err != nil || gb <= 0 {
+					return fmt.Errorf("must be a positive integer")
+				}
+				return nil
+			}),
+			huh.NewInput().Title("Mount Path").Value(&mount).
+				Validate(func(value string) error {
+					if value == "" {
+						value = mount
 					}
-					return "e.g., asia-southeast1-b"
-				}, &region).
-				Validate(func(s string) error {
-					if providerName == "gcp" && s == "" {
-						return fmt.Errorf("zone is required for GCP")
-					}
-					return nil
-				}),
-		),
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("VM Size").
-				OptionsFunc(func() []huh.Option[string] {
-					return cat.sizeOptions(region)
-				}, &region).
-				Value(&vmSize),
-		),
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Use SPOT / Preemptible instances?").
-				Value(&spot),
-		).WithHideFunc(func() bool { return providerName != "gcp" }),
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Enable persistent storage?").
-				Value(&storageEnabled),
-			huh.NewInput().
-				Title("Storage Size (GB)").
-				Value(&storageGB).
-				Validate(func(s string) error {
-					if storageEnabled {
-						var size int
-						if _, err := fmt.Sscanf(s, "%d", &size); err != nil || size <= 0 {
-							return fmt.Errorf("must be a positive integer")
-						}
-					}
-					return nil
-				}),
-			huh.NewInput().
-				Title("Mount Path").
-				Value(&mountPath).
-				Validate(func(s string) error {
-					if storageEnabled && s == "" {
+					if value == "" {
 						return fmt.Errorf("mount path is required")
 					}
 					return nil
-				}),
-		).WithHideFunc(func() bool { return !storageEnabled }),
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Compose File Path").
-				Value(&composeFile),
-		),
-	)
-	if err := stage2.Run(); err != nil {
-		return err
+				})))
+	}
+	groups = append(groups, huh.NewGroup(huh.NewInput().Title("Compose File Path").Value(&compose)))
+	if err := huh.NewForm(groups...).Run(); err != nil {
+		return nil, err
 	}
 
-	// The spot question is hidden for DigitalOcean (no spot equivalent), but its
-	// default value is true -- reset it so the config validates.
-	if providerName == "digitalocean" {
-		spot = false
+	candidate := *initial
+	candidate.Provider, candidate.ProjectID, candidate.Region, candidate.Zone = providerName, projectID, region, zone
+	candidate.VM.Size, candidate.VM.Spot = size, spot
+	candidate.Storage.Enabled, candidate.Storage.MountPath = storage, mount
+	if storage {
+		candidate.Storage.SizeGB, _ = strconv.Atoi(storageGB)
 	}
-
-	sizeGB := 20
-	if storageEnabled {
-		_, _ = fmt.Sscanf(storageGB, "%d", &sizeGB)
+	candidate.ComposeFile = compose
+	if providerName != initial.Provider && initial.Provider != "" {
+		candidate.VM.Image = ""
 	}
-
-	cfg := &config.ProjectConfig{
-		Name:      name,
-		Provider:  providerName,
-		ProjectID: gcpProjectID,
-		Region:    region,
-		Zone:      zone,
-		VM: config.VMConfig{
-			Size: vmSize,
-			Spot: spot,
-		},
-		Storage: config.StorageConfig{
-			Enabled:   storageEnabled,
-			SizeGB:    sizeGB,
-			MountPath: mountPath,
-		},
-		ComposeFile: composeFile,
+	candidate.SetDefaults()
+	if err := candidate.Validate(); err != nil {
+		return nil, err
 	}
+	return &candidate, nil
+}
 
-	cfg.SetDefaults()
-
-	// Generate an unguessable ntfy topic so push notifications work out of
-	// the box (see `serverku ntfy <project>`).
-	topic, err := config.GenerateNtfyTopic(name)
-	if err != nil {
-		return err
+// Keep a saved selection available when the live or fallback catalog omits it.
+func withCurrentOption(options []huh.Option[string], current string) []huh.Option[string] {
+	if current == "" {
+		return options
 	}
-	cfg.Notifications.Ntfy.Topic = topic
-
-	if err := cfg.Validate(); err != nil {
-		return err
+	for _, option := range options {
+		if option.Value == current {
+			return options
+		}
 	}
-
-	if err := store.SaveProject(cfg); err != nil {
-		return err
-	}
-
-	// Ensure SSH keys exist
-	_, _, err = store.EnsureSSHKeys()
-	if err != nil {
-		return fmt.Errorf("failed to generate SSH keys: %w", err)
-	}
-
-	fmt.Println()
-	fmt.Printf("Project %q created at %s/projects/%s.yaml\n", name, store.BaseDir(), name)
-	fmt.Printf("Notifications: run `serverku ntfy %s` to set up push notifications\n", name)
-	fmt.Println("Edit the config file to customize, then run: serverku up", name)
-	return nil
+	return append([]huh.Option[string]{huh.NewOption(current+" (current)", current)}, options...)
 }

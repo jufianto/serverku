@@ -1,6 +1,9 @@
 package provisioner
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // installDockerScript installs Docker Engine and Docker Compose plugin on an
 // Ubuntu VM using the official get.docker.com convenience script.
@@ -88,6 +91,11 @@ sudo chown serverku:serverku "$MOUNT_PATH"
 // targetDir/docker-compose.yml on the VM using a heredoc. The SERVERKU_COMPOSE_EOF
 // delimiter is unlikely to appear in any real compose file.
 func writeComposeScript(composeContent string, targetDir string) string {
+	// The closing heredoc delimiter must start on its own line, even when
+	// the source file has no trailing newline.
+	if !strings.HasSuffix(composeContent, "\n") {
+		composeContent += "\n"
+	}
 	return fmt.Sprintf(`set -e
 sudo mkdir -p "%s"
 sudo chown serverku:serverku "%s"

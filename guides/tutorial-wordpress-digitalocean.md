@@ -82,7 +82,15 @@ Wizard answers: `digitalocean`, your region, `s-1vcpu-1gb`, **No** to spot,
 
 ## Step 3 — Wire up routing and DNS
 
-Edit `~/.serverku/projects/blog.yaml`:
+Open the project configuration:
+
+```bash
+serverku edit blog
+```
+
+Set the values below. See [Editing projects](editing-projects.md) for backups and
+rerunning the setup wizard with `reinit`.
+
 
 ```yaml
 name: blog

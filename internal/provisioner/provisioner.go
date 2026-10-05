@@ -255,8 +255,7 @@ func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) erro
 
 	if opts.ComposeContent != "" || opts.SyncDir != "" {
 		log.Printf("[provisioner] running docker compose up -d...")
-		if out, err := runCommand(client, composeUpScript(composeDir)); err != nil {
-			log.Printf("[provisioner] docker compose up output:\n%s", out)
+		if _, err := runCommand(client, composeUpScript(composeDir)); err != nil {
 			return fmt.Errorf("failed to start containers: %w", err)
 		}
 		log.Printf("[provisioner] containers started")
@@ -380,8 +379,7 @@ func (p *SSHProvisioner) Deploy(ctx context.Context, opts DeployOpts) error {
 	}
 
 	log.Printf("[provisioner] deploy: running docker compose up -d...")
-	if out, err := runCommand(client, composeUpScript(composeDir)); err != nil {
-		log.Printf("[provisioner] docker compose up output:\n%s", out)
+	if _, err := runCommand(client, composeUpScript(composeDir)); err != nil {
 		return fmt.Errorf("failed to restart containers: %w", err)
 	}
 

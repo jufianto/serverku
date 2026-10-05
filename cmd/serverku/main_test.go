@@ -80,6 +80,23 @@ func TestHelpListsCommands(t *testing.T) {
 	}
 }
 
+func TestStatusInvalidArgsExplainProjectName(t *testing.T) {
+	for _, args := range [][]string{{"status"}, {"status", "kuma", "extra"}} {
+		t.Run(strings.Join(args, "-"), func(t *testing.T) {
+			cliArgs := append([]string{"--config-dir", t.TempDir()}, args...)
+			_, errOut, err := runCLI(t, cliArgs...)
+			if err == nil {
+				t.Fatal("expected an argument error")
+			}
+			for _, want := range []string{"project name", "Usage: serverku status <project-name>", "serverku status kuma", "serverku list"} {
+				if !strings.Contains(errOut, want) {
+					t.Errorf("missing %q in error: %s", want, errOut)
+				}
+			}
+		})
+	}
+}
+
 func TestInitWritesConfigAndAppearsInList(t *testing.T) {
 	cfgDir := t.TempDir()
 
@@ -367,5 +384,23 @@ func TestFormatVersion(t *testing.T) {
 				t.Errorf("formatVersion(%q,%q,%q,%v) = %q, want %q", tc.version, tc.commit, tc.date, tc.dirty, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestInitDOOmitsGCPProjectID(t *testing.T) {
+	t.Setenv("DIGITALOCEAN_TOKEN", "")
+	cfgDir := t.TempDir()
+	_, errOut, err := runCLI(t, "--config-dir", cfgDir, "init", "demo",
+		"--non-interactive", "--provider", "digitalocean", "--region", "sgp1",
+		"--size", "s-1vcpu-1gb", "--no-storage", "--project-id", "gcp-only-project")
+	if err != nil {
+		t.Fatalf("init failed: %v\n%s", err, errOut)
+	}
+	data, err := os.ReadFile(filepath.Join(cfgDir, "projects", "demo.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "project_id:") {
+		t.Fatalf("DigitalOcean config includes GCP project ID:\n%s", data)
 	}
 }

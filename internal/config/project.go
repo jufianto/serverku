@@ -136,7 +136,7 @@ type TelegramConfig struct {
 // VMConfig holds VM-specific configuration.
 type VMConfig struct {
 	Size  string `yaml:"size"`            // Machine type (e.g., "e2-medium", "s-1vcpu-1gb")
-	Image string `yaml:"image,omitempty"` // OS image, defaults to "ubuntu-22-04"
+	Image string `yaml:"image,omitempty"` // Provider-specific OS image
 	Spot  bool   `yaml:"spot"`            // Use SPOT/preemptible instances
 
 	// MaxUptimeHours auto-deletes the VM after this many hours of runtime as
@@ -253,6 +253,9 @@ func (c *ProjectConfig) Validate() error {
 func (c *ProjectConfig) SetDefaults() {
 	if c.VM.Image == "" {
 		c.VM.Image = "ubuntu-22-04"
+		if c.Provider == "digitalocean" {
+			c.VM.Image = "ubuntu-22-04-x64"
+		}
 	}
 	if c.Storage.Enabled && c.Storage.MountPath == "" {
 		c.Storage.MountPath = "/data"

@@ -74,8 +74,16 @@ The wizard asks a few questions. Answer:
 
 ## Step 3 — Point the config at your project
 
-Open `~/.serverku/projects/kuma.yaml` and set the Compose file, sync dir,
-and image:
+Open your project configuration:
+
+```bash
+serverku edit kuma
+```
+
+Set the Compose file, sync dir, and image. To rerun setup later or add persistent
+storage, see [Editing projects](editing-projects.md). This minimal tutorial keeps
+storage disabled, so app data is deleted with the VM.
+
 
 ```yaml
 name: kuma

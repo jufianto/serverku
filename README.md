@@ -247,6 +247,17 @@ serverku init myapp --non-interactive \
 | `--storage-gb` | Persistent disk size in GB (default `20`). |
 | `--non-interactive` | Skip the interactive wizard. |
 
+### Edit an existing project
+
+```bash
+serverku edit myapp
+serverku reinit myapp
+```
+
+`edit` uses your editor; `reinit` reruns setup for a project with no tracked VM.
+Both validate changes and keep a backup. See [Editing projects](guides/editing-projects.md)
+for editor selection, scripted updates, resource constraints, and persistence.
+
 ### 3. Configure sync and routing
 
 Point `sync_dir` at your local project directory. Configure `router` if you want HTTPS through Caddyku.
@@ -348,19 +359,22 @@ The VM is destroyed. Persistent storage remains available for the next `serverku
 serverku destroy myapp
 ```
 
-This removes cloud resources and local project state/config. Treat it as irreversible.
+This removes the VM, persistent storage, managed firewall, and local runtime state.
+The project YAML is kept for a future `up`. Data on deleted disks is permanently lost.
 
 ## Commands
 
 | Command | Description |
 | --- | --- |
-| `serverku init <project>` | Create a project config and SSH keys. |
+| `serverku init <project>` | Create a new project config and SSH keys. |
+| `serverku edit <project>` | Edit project YAML in VISUAL/EDITOR or vim/vi; validate and back up before saving. |
+| `serverku reinit <project>` | Rerun setup with current choices prefilled, preserving other settings and runtime state. |
 | `serverku setup <provider>` | Set up and verify cloud credentials (`digitalocean` saves an API token; `gcp` runs an isolated ADC login, lets you pick a project, and verifies it). |
 | `serverku check <project>` | Preflight: validate config, compose file, credentials, DNS — before spending anything. |
 | `serverku up <project>` | Create VM, attach storage, provision, sync, and deploy. |
 | `serverku deploy <project>` | Push code changes to the running VM: re-sync, rewrite compose, `compose up -d`. Same IP, seconds not minutes. |
 | `serverku down <project>` | Destroy VM while preserving persistent storage. Use `-f/--force` to skip the confirmation prompt. |
-| `serverku destroy <project>` | Delete VM, storage, state, and config. Use `-f/--force` to skip the confirmation prompt. |
+| `serverku destroy <project>` | Delete VM, storage, managed firewall, and runtime state; keep project YAML. Use `-f/--force` to skip the confirmation prompt. |
 | `serverku status <project>` | Show project status and reconcile with provider. |
 | `serverku list` | List all projects with status and estimated costs. |
 | `serverku ssh <project>` | Open an interactive SSH shell. |
@@ -377,7 +391,8 @@ Global flags:
 
 ```bash
 --config-dir string   config directory (default: ~/.serverku/)
--v, --verbose         enable verbose output
+-v, --verbose         enable verbose output and cloud API logs
+--debug               show cloud API logs (overrides config.yaml debug setting)
 --version             print version
 ```
 

@@ -1,0 +1,9 @@
+services:
+  floci-gcp:
+    # Nightly published 2026-10-04, includes the Compute Engine control plane.
+    # Pin the digest so test capabilities stay stable.
+    image: floci/floci-gcp@sha256:399c619271d67b14b83d2ebb302f9cf61750b21edb8ad0a47f40c0ae5eed1034
+    ports:
+      - "127.0.0.1:4588:4588"
+    environment:
+      FLOCI_GCP_STORAGE_MODE: memory

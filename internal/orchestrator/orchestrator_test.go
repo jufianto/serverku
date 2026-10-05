@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jufianto/serverku/internal/config"
@@ -779,6 +780,13 @@ func TestUpProvisioningFailureDestroysVM(t *testing.T) {
 	if state.Status != config.StatusError {
 		t.Errorf("state.Status = %q, want %q", state.Status, config.StatusError)
 	}
+	if state.VMID != "" || state.VMName != "" || state.ExternalIP != "" {
+		t.Errorf("deleted VM remains tracked: %+v", state)
+	}
+	if state.DiskID == "" || state.DiskName == "" {
+		t.Error("persistent disk tracking must survive VM cleanup")
+	}
+
 }
 
 // ---------------------------------------------------------------------------
@@ -1368,5 +1376,32 @@ func TestPreflightDNSWithoutSupport(t *testing.T) {
 	}
 	if c, ok := findCheck(res, "dns"); !ok || c.OK {
 		t.Errorf("dns check should be present and failing: %+v", c)
+	}
+}
+
+func TestUpProvisioningFailureReportsCleanupFailure(t *testing.T) {
+	mp := &mockProvisioner{provisionFunc: func(context.Context, provisioner.ProvisionOpts) error {
+		return fmt.Errorf("compose rejected")
+	}}
+	orch, mock, factory := testSetupWithProvisioner(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"}, mp)
+	mock.destroyVMFunc = func(context.Context, string) error { return fmt.Errorf("deletion forbidden") }
+	_, err := orch.Up(context.Background(), "test-project", factory)
+	if err == nil || !strings.Contains(err.Error(), "compose rejected") || !strings.Contains(err.Error(), "automatic VM cleanup failed") || !strings.Contains(err.Error(), "deletion forbidden") {
+		t.Fatalf("missing provisioning or cleanup failure: %v", err)
+	}
+	state, err := orch.store.LoadState("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != config.StatusError || state.VMID == "" || state.VMName == "" || state.ExternalIP == "" {
+		t.Fatalf("VM must remain tracked after failed deletion: %+v", state)
+	}
+	if !strings.Contains(state.ErrorMsg, "deletion forbidden") {
+		t.Errorf("cleanup error not saved: %s", state.ErrorMsg)
+	}
+	for _, call := range mock.calls {
+		if call == "DeleteDisk" {
+			t.Fatal("disk deleted on failed provisioning")
+		}
 	}
 }

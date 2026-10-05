@@ -326,10 +326,21 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		Heartbeat:       heartbeatOpts(ctx, cfg, cp, projectName),
 	}
 	if err := o.provisioner.Provision(ctx, provOpts); err != nil {
-		o.setErrorState(state, fmt.Sprintf("provisioning failed: %v", err))
 		// Destroy VM on provisioning failure; keep disk (data must survive).
-		log.Printf("[orchestrator] provisioning failed, destroying VM (disk preserved): %v", err)
-		_ = cp.DestroyVM(ctx, vm.Name)
+		log.Printf("[orchestrator] provisioning failed; deleting VM %q (persistent disk, if any, preserved)", vm.Name)
+		if cleanupErr := cp.DestroyVM(ctx, vm.Name); cleanupErr != nil {
+			failure := fmt.Errorf("failed to provision VM: %w; automatic VM cleanup failed: %v (VM %q may still exist)", err, cleanupErr, vm.Name)
+			log.Printf("[orchestrator] automatic VM cleanup failed; VM %q remains tracked", vm.Name)
+			o.setErrorState(state, failure.Error())
+			return nil, failure
+		}
+		state.VMID = ""
+		state.VMName = ""
+		state.ExternalIP = ""
+		now := time.Now()
+		state.StoppedAt = &now
+		log.Printf("[orchestrator] VM %q deleted; cleared local VM state (persistent disk, if any, preserved)", vm.Name)
+		o.setErrorState(state, fmt.Sprintf("provisioning failed: %v", err))
 		return nil, fmt.Errorf("failed to provision VM: %w", err)
 	}
 

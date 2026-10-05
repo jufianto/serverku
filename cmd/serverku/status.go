@@ -17,9 +17,15 @@ import (
 
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status <project-name>",
-		Short: "Show the current status of a project",
-		Args:  cobra.ExactArgs(1),
+		Use:     "status <project-name>",
+		Short:   "Show the current status of a project",
+		Example: "  serverku status kuma\n  serverku list",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return fmt.Errorf("provide exactly one project name\nUsage: %s\nExample: serverku status kuma\nRun 'serverku list' to find your project name", cmd.UseLine())
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 

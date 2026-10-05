@@ -151,7 +151,7 @@ When done, tear it down. Pay only for storage when idle.`,
 	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory (default: ~/.serverku/)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output and detailed cloud API logs")
 
-	rootCmd.PersistentFlags().BoolVar(&debugLogging, "debug", false, "show detailed cloud API logs (overrides config.yaml debug setting)")
+	rootCmd.PersistentFlags().BoolVar(&debugLogging, "debug", false, "show detailed cloud API and SSH retry logs (overrides config.yaml debug setting)")
 
 	// Register subcommands
 	rootCmd.AddCommand(

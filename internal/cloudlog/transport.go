@@ -1,4 +1,5 @@
-// Package cloudlog logs cloud API actions without recording credentials or payloads.
+// Package cloudlog controls diagnostic logging and logs cloud API actions
+// without recording credentials or payloads.
 package cloudlog
 
 import (
@@ -10,8 +11,16 @@ import (
 
 var debugEnabled atomic.Bool
 
-// SetDebug enables detailed API logs. They are disabled by default.
+// SetDebug enables detailed diagnostic logs. They are disabled by default.
 func SetDebug(enabled bool) { debugEnabled.Store(enabled) }
+
+// Debugf logs diagnostics only when debug is enabled. Callers must exclude
+// credentials and other secrets from messages.
+func Debugf(format string, args ...any) {
+	if debugEnabled.Load() {
+		log.Printf(format, args...)
+	}
+}
 
 // Transport logs each request before sending it and its result afterwards.
 // Headers, query strings and bodies are deliberately excluded: they can contain

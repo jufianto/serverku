@@ -181,13 +181,14 @@ type SSHProvisioner struct{}
 //  4. Transfer and start docker-compose (if compose content provided)
 //  5. Run startup commands
 func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) error {
-	log.Printf("[provisioner] connecting to %s as %s...", opts.Host, opts.SSHUser)
+	log.Printf("[provisioner] waiting for SSH on %s as %s (up to 5 minutes)...", opts.Host, opts.SSHUser)
 
 	client, err := connectSSHWithRetry(ctx, opts.Host, opts.PrivateKeyPath, opts.SSHUser)
 	if err != nil {
 		return fmt.Errorf("failed to connect to VM via SSH: %w", err)
 	}
 	defer client.Close()
+	log.Printf("[provisioner] SSH connection established")
 
 	log.Printf("[provisioner] installing Docker...")
 	if out, err := runCommand(client, installDockerScript); err != nil {
@@ -351,13 +352,14 @@ func rsyncDir(ctx context.Context, syncDir, privateKeyPath, sshUser, host, destD
 // so changed services are recreated. Docker, the mounted disk, and Caddyku
 // routing from the original Provision are reused untouched.
 func (p *SSHProvisioner) Deploy(ctx context.Context, opts DeployOpts) error {
-	log.Printf("[provisioner] deploy: connecting to %s as %s...", opts.Host, opts.SSHUser)
+	log.Printf("[provisioner] deploy: waiting for SSH on %s as %s (up to 5 minutes)...", opts.Host, opts.SSHUser)
 
 	client, err := connectSSHWithRetry(ctx, opts.Host, opts.PrivateKeyPath, opts.SSHUser)
 	if err != nil {
 		return fmt.Errorf("failed to connect to VM via SSH: %w", err)
 	}
 	defer client.Close()
+	log.Printf("[provisioner] deploy: SSH connection established")
 
 	composeDir := "/home/" + opts.SSHUser
 	if opts.StorageEnabled && opts.MountPath != "" {

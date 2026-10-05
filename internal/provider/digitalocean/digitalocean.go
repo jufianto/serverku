@@ -302,7 +302,7 @@ func (p *Provider) WaitForReady(ctx context.Context, name string) error {
 		if err != nil {
 			log.Printf("[digitalocean] error checking droplet status: %v", err)
 		} else if status.State == provider.VMStateRunning {
-			log.Printf("[digitalocean] droplet %q is ready", name)
+			log.Printf("[digitalocean] droplet %q is active; SSH readiness is checked during provisioning", name)
 			return nil
 		}
 

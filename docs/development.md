@@ -40,6 +40,11 @@ To enable them persistently, set `debug: true` in `~/.serverku/config.yaml`
 `debug: false` keeps them hidden. `--verbose` also enables API logs, and an
 explicit `--debug=false` overrides the file and `--verbose`.
 
+Fresh VMs can become active before SSH accepts connections. During `up` and
+`deploy`, Serverku shows a waiting message and confirms when SSH connects.
+Individual connection retries are diagnostics shown only when debug is enabled;
+the final timeout or connection failure remains visible in normal output.
+
 Normal status output, progress messages, warnings, and errors stay visible. Lifecycle
 and provisioning messages explain actions such as reusing/registering an SSH
 key, injecting it into a VM, creating storage, transferring Compose, and starting

@@ -198,10 +198,12 @@ func printComponents(ctx context.Context, cfg *config.ProjectConfig, state *conf
 		diskName = "serverku-" + cfg.Name + "-data"
 	}
 
+	pubKey, _ := store.GetSSHPublicKey()
 	comps, err := lister.ListComponents(ctx, provider.ComponentQuery{
 		ProjectName: cfg.Name,
 		VMName:      vmName,
 		DiskName:    diskName,
+		SSHPubKey:   pubKey,
 	})
 	if err != nil || len(comps) == 0 {
 		return
@@ -224,6 +226,10 @@ func printComponents(ctx context.Context, cfg *config.ProjectConfig, state *conf
 
 		var st string
 		switch {
+		case c.LookupFailed:
+			st = "unknown"
+		case c.Present && c.Shared:
+			st = "present  shared (retained by destroy)"
 		case c.Present && !c.RemovedByDestroy:
 			st = "present  ⚠ orphan (destroy won't remove)"
 			orphans++

@@ -499,7 +499,8 @@ func (p *Provider) AccountEmail(ctx context.Context) (string, error) {
 
 // ListComponents reports the live state of the DigitalOcean resources serverku
 // manages for a project: the droplet and volume (removed by destroy), plus the
-// account SSH key and any volume snapshots (orphans -- destroy leaves them).
+// shared account SSH key (intentionally retained) and volume snapshots
+// (orphans -- destroy leaves them).
 func (p *Provider) ListComponents(ctx context.Context, q provider.ComponentQuery) ([]provider.Component, error) {
 	var comps []provider.Component
 
@@ -521,18 +522,30 @@ func (p *Provider) ListComponents(ctx context.Context, q provider.ComponentQuery
 		comps = append(comps, provider.Component{Kind: "Volume", Name: q.DiskName, Detail: detail, Present: present, RemovedByDestroy: true})
 	}
 
-	// SSH key -- orphan. Name mirrors CreateVM: "serverku-" + VM name.
-	keyName := "serverku-" + q.VMName
-	keyPresent := false
-	if keys, _, err := p.client.Keys.List(ctx, &godo.ListOptions{PerPage: 200}); err == nil {
-		for _, k := range keys {
-			if k.Name == keyName {
-				keyPresent = true
-				break
-			}
+	// All local projects share a key. CreateVM reuses it by fingerprint,
+	// regardless of which project originally registered its account name.
+	keyComponent := provider.Component{Kind: "SSH key", Name: "local serverku key", Shared: true}
+	if q.SSHPubKey == "" {
+		keyComponent.LookupFailed = true
+		keyComponent.Detail = "local public key unavailable"
+	} else if parsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(q.SSHPubKey)); err != nil {
+		keyComponent.LookupFailed = true
+		keyComponent.Detail = "invalid local public key"
+	} else {
+		key, response, err := p.client.Keys.GetByFingerprint(ctx, ssh.FingerprintLegacyMD5(parsed))
+		switch {
+		case err == nil:
+			keyComponent.Name = key.Name
+			keyComponent.Present = true
+			keyComponent.Detail = fmt.Sprintf("id: %d", key.ID)
+		case response != nil && response.StatusCode == http.StatusNotFound:
+			keyComponent.Detail = "not registered"
+		default:
+			keyComponent.LookupFailed = true
+			keyComponent.Detail = "account key lookup failed"
 		}
 	}
-	comps = append(comps, provider.Component{Kind: "SSH key", Name: keyName, Present: keyPresent, RemovedByDestroy: false})
+	comps = append(comps, keyComponent)
 
 	// Volume snapshots -- orphan. Attributable while the volume exists.
 	if volID != "" {

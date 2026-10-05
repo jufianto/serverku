@@ -45,6 +45,12 @@ Fresh VMs can become active before SSH accepts connections. During `up` and
 Individual connection retries are diagnostics shown only when debug is enabled;
 the final timeout or connection failure remains visible in normal output.
 
+DigitalOcean SSH keys are shared across projects. `status` finds the local
+public key by fingerprint and displays its actual account name, which may name
+the first project that registered it. Shared keys are intentionally retained
+by `destroy` and are not reported as orphaned resources. A failed key lookup
+shows `unknown`; `none` means the key was confirmed unregistered.
+
 Normal status output, progress messages, warnings, and errors stay visible. Lifecycle
 and provisioning messages explain actions such as reusing/registering an SSH
 key, injecting it into a VM, creating storage, transferring Compose, and starting

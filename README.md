@@ -221,11 +221,11 @@ The interactive wizard creates a config under:
 ~/.serverku/projects/myapp.yaml
 ```
 
-It also ensures the managed SSH keypair exists under:
+It also generates an independent Ed25519 SSH keypair for this project:
 
 ```text
-~/.serverku/keys/serverku_rsa
-~/.serverku/keys/serverku_rsa.pub
+~/.serverku/keys/myapp/id_ed25519
+~/.serverku/keys/myapp/id_ed25519.pub
 ```
 
 For scripting, skip the wizard with `--non-interactive` and pass everything as flags:
@@ -242,6 +242,7 @@ serverku init myapp --non-interactive \
 | `-r, --region` | Cloud region. |
 | `-z, --zone` | Cloud zone (required for GCP). |
 | `-s, --size` | VM machine type (default `e2-medium`). |
+| `--ssh-key` | Existing unencrypted private key; otherwise generate a project key. |
 | `--spot` | Use SPOT/preemptible instances (GCP only; defaults to `true` for GCP and `false` for DigitalOcean, which rejects it). |
 | `--no-storage` | Create a fully stateless project without a persistent disk. |
 | `--storage-gb` | Persistent disk size in GB (default `20`). |

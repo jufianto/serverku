@@ -15,8 +15,9 @@
 - Store layout is fixed by `internal/config/store.go`.
 - `projects/<name>.yaml`: user config.
 - `state/<name>.json`: runtime state.
-- `keys/serverku_rsa*`: generated SSH keypair.
-- `serverku init` creates the project YAML and ensures the SSH keypair exists.
+- `keys/<name>/id_ed25519*`: generated per-project SSH keypair. Legacy `keys/serverku_rsa*` remains supported for tracked VMs.
+- `serverku init` creates the project YAML and a project SSH key, or validates the custom key from `ssh.private_key` / `--ssh-key`.
+- Resolve keys through `Store.ResolveProjectSSHKey`; state pins existing VM identities. `destroy` removes generated project keys and owned DO account keys; custom/shared keys are retained.
 - Project names are stricter than many CLIs: lowercase letters, digits, and hyphens only; no leading/trailing hyphen.
 
 ## Commands

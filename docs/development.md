@@ -45,11 +45,12 @@ Fresh VMs can become active before SSH accepts connections. During `up` and
 Individual connection retries are diagnostics shown only when debug is enabled;
 the final timeout or connection failure remains visible in normal output.
 
-DigitalOcean SSH keys are shared across projects. `status` finds the local
-public key by fingerprint and displays its actual account name, which may name
-the first project that registered it. Shared keys are intentionally retained
-by `destroy` and are not reported as orphaned resources. A failed key lookup
-shows `unknown`; `none` means the key was confirmed unregistered.
+Each new project uses its own generated SSH key. DigitalOcean registers it as
+`serverku-<project>`; `status` finds it by fingerprint. `down` retains keys and
+`destroy` removes generated local keys and account keys created by that project.
+Custom, legacy shared, externally registered, and still-referenced keys are
+retained. A failed key lookup shows `unknown`; `none` means the key was confirmed
+unregistered. See [Project SSH keys](../guides/project-ssh-keys.md).
 
 Normal status output, progress messages, warnings, and errors stay visible. Lifecycle
 and provisioning messages explain actions such as reusing/registering an SSH

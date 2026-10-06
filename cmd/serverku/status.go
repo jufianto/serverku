@@ -198,12 +198,24 @@ func printComponents(ctx context.Context, cfg *config.ProjectConfig, state *conf
 		diskName = "serverku-" + cfg.Name + "-data"
 	}
 
-	pubKey, _ := store.GetSSHPublicKey()
+	pubKey := state.SSHPublicKey
+	if pubKey == "" {
+		if key, keyErr := store.ResolveProjectSSHKey(cfg, state, false); keyErr == nil {
+			pubKey = key.PublicKey
+		}
+	}
+	keyOwned := state.SSHKeyOwned && state.SSHKeyManaged
+	if keyOwned && pubKey != "" {
+		if used, keyErr := store.ProjectSSHKeyInUse(cfg.Name, pubKey); keyErr == nil && used {
+			keyOwned = false
+		}
+	}
 	comps, err := lister.ListComponents(ctx, provider.ComponentQuery{
 		ProjectName: cfg.Name,
 		VMName:      vmName,
 		DiskName:    diskName,
 		SSHPubKey:   pubKey,
+		SSHKeyOwned: keyOwned,
 	})
 	if err != nil || len(comps) == 0 {
 		return

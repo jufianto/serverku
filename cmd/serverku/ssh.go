@@ -29,7 +29,7 @@ connection using the serverku managed private key.`,
 			}
 
 			// Get the SSH private key
-			privKeyPath, err := store.GetSSHPrivateKeyPath()
+			privKeyPath, err := projectSSHKeyPath(name)
 			if err != nil {
 				return fmt.Errorf("failed to get SSH private key: %w", err)
 			}
@@ -45,6 +45,7 @@ connection using the serverku managed private key.`,
 			// Prepare the SSH command
 			sshCmd := exec.Command(sshBin,
 				"-i", privKeyPath,
+				"-o", "IdentitiesOnly=yes",
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "LogLevel=ERROR", // Suppress some warnings
 				fmt.Sprintf("serverku@%s", state.ExternalIP),

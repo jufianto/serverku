@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -24,10 +23,11 @@ func (p *inventoryProvider) ListComponents(_ context.Context, q provider.Compone
 
 func TestComponentsShowsSharedKeyWithoutOrphanWarning(t *testing.T) {
 	s := withStore(t)
-	const publicKey = "public-key-for-inventory"
-	if err := os.WriteFile(filepath.Join(s.KeysDir(), "serverku_rsa.pub"), []byte(publicKey), 0600); err != nil {
+	key, err := s.ResolveProjectSSHKey(&config.ProjectConfig{Name: "kuma"}, nil, true)
+	if err != nil {
 		t.Fatal(err)
 	}
+	publicKey := key.PublicKey
 	p := &inventoryProvider{components: []provider.Component{
 		{Kind: "SSH key", Name: "serverku-serverku-wpblog", Present: true, Shared: true},
 		{Kind: "Snapshot", Detail: "1 found", Present: true},

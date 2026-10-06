@@ -37,7 +37,7 @@ from the serverku deployment directory over SSH.`,
 				composeDir = cfg.Storage.MountPath
 			}
 
-			privKeyPath, err := store.GetSSHPrivateKeyPath()
+			privKeyPath, err := projectSSHKeyPath(name)
 			if err != nil {
 				return fmt.Errorf("failed to get SSH private key: %w", err)
 			}
@@ -52,6 +52,7 @@ from the serverku deployment directory over SSH.`,
 			remoteCmd := fmt.Sprintf("cd %q && docker compose logs -f", composeDir)
 			logsCmd := exec.CommandContext(cmd.Context(), sshBin,
 				"-i", privKeyPath,
+				"-o", "IdentitiesOnly=yes",
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "LogLevel=ERROR",
 				fmt.Sprintf("serverku@%s", state.ExternalIP),

@@ -48,7 +48,7 @@ original unchanged.
 
 Only setup fields change. Notifications and their ntfy topic, sync directory,
 routing/DNS, hooks, startup commands, and other settings are preserved. YAML
-comments and custom fields are retained. State and shared SSH keys are untouched.
+comments and custom fields are retained. State and SSH keys are untouched.
 DigitalOcean setup omits the GCP project and zone and disables spot instances.
 
 For scripts, specify only the fields you want to change:
@@ -59,7 +59,7 @@ serverku reinit kuma --non-interactive --no-storage=false --storage-gb 10
 ```
 
 Other available flags are `--provider`, `--project-id`, `--region`, `--zone`,
-`--image`, `--spot`, `--mount-path`, and `--compose-file`. Unspecified fields keep
+`--image`, `--spot`, `--mount-path`, `--compose-file`, and `--ssh-key`. Unspecified fields keep
 their existing values. A provider change gets an appropriate default image unless
 an image is explicitly supplied.
 

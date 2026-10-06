@@ -125,6 +125,7 @@ func newReinitCmd() *cobra.Command {
 	cmd.Flags().IntVar(&selected.Storage.SizeGB, "storage-gb", 20, "persistent disk size in GB")
 	cmd.Flags().StringVar(&selected.Storage.MountPath, "mount-path", "/data", "persistent disk mount path")
 	cmd.Flags().StringVar(&selected.ComposeFile, "compose-file", "", "Compose file path")
+	cmd.Flags().StringVar(&selected.SSH.PrivateKey, "ssh-key", "", "existing unencrypted SSH private key (empty selects a project key)")
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "change explicitly supplied flags without the wizard")
 	return cmd
 }
@@ -138,6 +139,7 @@ func applyReinitFlags(cmd *cobra.Command, candidate, selected *config.ProjectCon
 		"region": {&candidate.Region, selected.Region}, "zone": {&candidate.Zone, selected.Zone},
 		"size": {&candidate.VM.Size, selected.VM.Size}, "image": {&candidate.VM.Image, selected.VM.Image},
 		"mount-path": {&candidate.Storage.MountPath, selected.Storage.MountPath}, "compose-file": {&candidate.ComposeFile, selected.ComposeFile},
+		"ssh-key": {&candidate.SSH.PrivateKey, selected.SSH.PrivateKey},
 	}
 	for flag, field := range fields {
 		if cmd.Flags().Changed(flag) {

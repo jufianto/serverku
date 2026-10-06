@@ -255,6 +255,9 @@ func newDestroyCmd() *cobra.Command {
 		Long: `Destroy the cloud resources: VM, persistent storage, and firewall.
 This is irreversible - all data on the VM and storage is permanently lost.
 
+Generated project SSH keys and account registrations owned by this project
+are removed. Custom, legacy shared, and still-referenced keys are retained.
+
 The local project configuration is kept, so you can bring the project back
 later with 'serverku up'. Delete the config file yourself if you want it gone.`,
 		Args: cobra.ExactArgs(1),
@@ -289,7 +292,7 @@ later with 'serverku up'. Delete the config file yourself if you want it gone.`,
 				return fmt.Errorf("failed to destroy project: %w", err)
 			}
 
-			fmt.Printf("Project %q destroyed. Cloud resources deleted; local config kept (recreate with `serverku up %s`).\n", name, name)
+			fmt.Printf("Project %q destroyed. VM/storage cleanup complete; local config kept (recreate with `serverku up %s`).\n", name, name)
 
 			return nil
 		},

@@ -44,6 +44,12 @@ func ParseProjectDocument(name string, data []byte) (*ProjectConfig, error) {
 func ValidateProjectChange(before, after *ProjectConfig, state *ProjectState) error {
 	hasVM := state.VMID != "" || state.VMName != "" || state.IsRunning() || state.Status == StatusStopping
 	hasDisk := state.DiskID != "" || state.DiskName != ""
+	if before != nil && before.SSH.PrivateKey != after.SSH.PrivateKey && (hasVM || state.SSHPrivateKeyPath != "" || state.SSHKeyOwned) {
+		return fmt.Errorf("cannot change the SSH key while a VM or SSH identity is tracked; destroy the project resources before changing ssh.private_key (persistent data must be backed up first)")
+	}
+	if state.SSHKeyOwned && before != nil && before.Provider != after.Provider {
+		return fmt.Errorf("cannot change provider while an owned SSH key is tracked; destroy its resources first")
+	}
 	if !hasVM && !hasDisk {
 		return nil
 	}
@@ -135,7 +141,7 @@ func MergeProjectSettings(data []byte, before, after *ProjectConfig) ([]byte, []
 	if err := newNode.Encode(after); err != nil {
 		return nil, nil, err
 	}
-	paths := []string{"provider", "project_id", "region", "zone", "vm.size", "vm.image", "vm.spot", "storage.enabled", "storage.size_gb", "storage.mount_path", "compose_file"}
+	paths := []string{"provider", "project_id", "region", "zone", "vm.size", "vm.image", "vm.spot", "storage.enabled", "storage.size_gb", "storage.mount_path", "compose_file", "ssh.private_key"}
 	var changes []string
 	for _, path := range paths {
 		parts := strings.Split(path, ".")

@@ -112,6 +112,56 @@ func TestCreateVMSSHKeyReuse(t *testing.T) {
 	}
 }
 
+func TestDeleteSSHKeyVerifiesOwnershipIdentity(t *testing.T) {
+	public, err := ssh.NewPublicKey(ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := string(ssh.MarshalAuthorizedKey(public))
+	fingerprint := ssh.FingerprintLegacyMD5(public)
+	for _, tc := range []struct {
+		name         string
+		status       int
+		fingerprint  string
+		deleteStatus int
+		wantDeletes  int
+		wantErr      bool
+	}{
+		{name: "matching key", status: 200, fingerprint: fingerprint, deleteStatus: 204, wantDeletes: 1},
+		{name: "already absent", status: 404},
+		{name: "different identity", status: 200, fingerprint: "different", wantErr: true},
+		{name: "lookup denied", status: 403, wantErr: true},
+		{name: "deletion denied", status: 200, fingerprint: fingerprint, deleteStatus: 403, wantDeletes: 1, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			deletes := 0
+			p := pricingTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/v2/account/keys/42" {
+					t.Errorf("wrong key URL: %s", r.URL)
+				}
+				if r.Method == http.MethodDelete {
+					deletes++
+					w.WriteHeader(tc.deleteStatus)
+					return
+				}
+				if r.Method != http.MethodGet {
+					t.Errorf("unexpected method %s", r.Method)
+				}
+				w.WriteHeader(tc.status)
+				if tc.status == 200 {
+					_ = json.NewEncoder(w).Encode(map[string]any{"ssh_key": godo.Key{ID: 42, Name: "serverku-kuma", Fingerprint: tc.fingerprint}})
+				} else {
+					_, _ = w.Write([]byte(`{"id":"error","message":"lookup failed"}`))
+				}
+			})
+			err := p.DeleteSSHKey(context.Background(), "42", pub)
+			if (err != nil) != tc.wantErr || deletes != tc.wantDeletes {
+				t.Fatalf("error=%v,deletions=%d,want=%d", err, deletes, tc.wantDeletes)
+			}
+		})
+	}
+}
+
 func TestCreateVMRejectsInvalidSSHKey(t *testing.T) {
 	p := pricingTestProvider(t, func(w http.ResponseWriter, r *http.Request) { t.Error("invalid key must fail before API calls") })
 	if _, err := p.CreateVM(context.Background(), provider.VMConfig{SSHPubKey: "invalid"}); err == nil || !strings.Contains(err.Error(), "invalid SSH public key") {

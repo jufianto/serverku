@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -127,6 +128,9 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	if state.IsRunning() {
 		return nil, fmt.Errorf("project %q is already running (status: %s, ip: %s)", projectName, state.Status, state.ExternalIP)
 	}
+	if state.VMName != "" || state.VMID != "" {
+		return nil, fmt.Errorf("project %q still tracks a VM; run 'serverku status %s' and recover or 'serverku down %s' before creating another VM", projectName, projectName, projectName)
+	}
 
 	// Step 2.5: pre_up hook -- runs locally before any cloud resource is created,
 	// so e.g. a build can produce artifacts that are then synced to the VM.
@@ -135,10 +139,11 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	}
 
 	// Step 3: Ensure SSH keys
-	privKeyPath, pubKey, err := o.store.EnsureSSHKeys()
+	sshKey, err := o.store.ResolveProjectSSHKey(cfg, state, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure SSH keys: %w", err)
 	}
+	privKeyPath, pubKey := sshKey.PrivatePath, sshKey.PublicKey
 
 	// Create the cloud provider
 	cp, err := factory(ctx, cfg)
@@ -155,11 +160,26 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	state.Zone = cfg.Zone
 	state.StartedAt = &now
 	state.ErrorMsg = ""
+	state.SSHPrivateKeyPath = sshKey.PrivatePath
+	state.SSHPublicKey = sshKey.PublicKey
+	state.SSHKeyManaged = sshKey.Managed
 	if err := o.store.SaveState(state); err != nil {
 		return nil, fmt.Errorf("failed to save state: %w", err)
 	}
 
 	result := &UpResult{}
+	if manager, ok := cp.(provider.SSHKeyManager); ok {
+		key, err := manager.EnsureProjectSSHKey(ctx, projectName, pubKey)
+		if err != nil {
+			o.setErrorState(state, fmt.Sprintf("failed to register SSH key: %v", err))
+			return nil, fmt.Errorf("failed to register SSH key: %w", err)
+		}
+		state.SSHKeyOwned = sshKey.Managed && (key.Created || (state.SSHKeyOwned && state.SSHKeyID == key.ID))
+		state.SSHKeyID = key.ID
+		if err := o.store.SaveState(state); err != nil {
+			return nil, fmt.Errorf("failed to save SSH key state: %w", err)
+		}
+	}
 
 	// Step 4: Create disk if storage is enabled and disk doesn't exist
 	if cfg.Storage.Enabled && state.DiskName == "" {
@@ -220,6 +240,7 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		MaxUptimeHours: cfg.VM.MaxUptimeHours,
 		Tags:           []string{"serverku", fmt.Sprintf("serverku-%s", projectName)},
 		SSHPubKey:      pubKey,
+		SSHKeyID:       state.SSHKeyID,
 		ProjectID:      cfg.ProjectID,
 	})
 	if err != nil {
@@ -407,10 +428,11 @@ func (o *Orchestrator) Deploy(ctx context.Context, projectName string) error {
 		return fmt.Errorf("pre_deploy hook failed: %w", err)
 	}
 
-	privKeyPath, err := o.store.GetSSHPrivateKeyPath()
+	sshKey, err := o.store.ResolveProjectSSHKey(cfg, state, false)
 	if err != nil {
 		return fmt.Errorf("failed to get SSH key: %w", err)
 	}
+	privKeyPath := sshKey.PrivatePath
 
 	var composeContent string
 	if cfg.ComposeFile != "" {
@@ -501,7 +523,7 @@ func (o *Orchestrator) down(ctx context.Context, projectName string, factory Pro
 
 	// Step 2.5: Teardown the VM (stop containers, unmount disk) before detaching
 	if state.ExternalIP != "" {
-		privKeyPath, err := o.store.GetSSHPrivateKeyPath()
+		sshKey, err := o.store.ResolveProjectSSHKey(cfg, state, false)
 		if err != nil {
 			log.Printf("[orchestrator] warning: could not get SSH key for teardown: %v", err)
 		} else {
@@ -513,7 +535,7 @@ func (o *Orchestrator) down(ctx context.Context, projectName string, factory Pro
 			}
 			teardownOpts := provisioner.TeardownOpts{
 				Host:           state.ExternalIP,
-				PrivateKeyPath: privKeyPath,
+				PrivateKeyPath: sshKey.PrivatePath,
 				SSHUser:        "serverku",
 				StorageEnabled: cfg.Storage.Enabled,
 				MountPath:      cfg.Storage.MountPath,
@@ -642,13 +664,13 @@ func (o *Orchestrator) Status(ctx context.Context, projectName string, factory P
 	return state, nil
 }
 
-// Destroy permanently deletes all cloud resources and local config for a project.
-// This includes the VM, persistent disk, firewall rules, state file, and config file.
+// Destroy deletes the VM, disk, firewall, and generated project SSH identities.
+// Local config, custom/legacy keys, and keys referenced by other projects survive.
 //
 // The operation flow:
 //  1. Down() if running (tear down VM, detach disk)
 //  2. Delete disk if exists
-//  3. Delete local state and config files
+//  3. Delete owned SSH keys and reset runtime state (preserve config)
 func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory ProviderFactory) error {
 	cfg, err := o.store.LoadProject(projectName)
 	if err != nil {
@@ -684,7 +706,7 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 	// still has to be deleted.
 	cp, cpErr := factory(ctx, cfg)
 	if cpErr != nil {
-		if state.DiskName != "" {
+		if state.DiskName != "" || state.SSHKeyOwned {
 			return fmt.Errorf("failed to create cloud provider: %w", cpErr)
 		}
 		log.Printf("[orchestrator] warning: could not create provider for firewall cleanup: %v", cpErr)
@@ -693,6 +715,10 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 			log.Printf("[orchestrator] deleting disk %q", state.DiskName)
 			if err := cp.DeleteDisk(ctx, state.DiskName); err != nil {
 				return fmt.Errorf("failed to delete disk: %w", err)
+			}
+			state.DiskID, state.DiskName = "", ""
+			if err := o.store.SaveState(state); err != nil {
+				return fmt.Errorf("failed to save disk cleanup state: %w", err)
 			}
 		}
 
@@ -706,12 +732,61 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 		}
 	}
 
+	// Remove only keys generated for this project and account keys we created.
+	// Legacy, custom, externally registered, or still referenced keys survive.
+	pub := state.SSHPublicKey
+	managed := state.SSHKeyManaged
+	if pub == "" {
+		key, keyErr := o.store.ResolveProjectSSHKey(cfg, state, false)
+		if keyErr == nil {
+			pub, managed = key.PublicKey, key.Managed
+		}
+		if keyErr != nil && !errors.Is(keyErr, os.ErrNotExist) {
+			return fmt.Errorf("failed to inspect project SSH key: %w", keyErr)
+		}
+	}
+	inUse := false
+	if managed && pub != "" {
+		inUse, err = o.store.ProjectSSHKeyInUse(projectName, pub)
+		if err != nil {
+			return fmt.Errorf("failed to check SSH key references: %w", err)
+		}
+	}
+	if inUse {
+		log.Printf("[orchestrator] retaining SSH key referenced by another project")
+	} else if managed {
+		if state.SSHKeyOwned {
+			manager, ok := cp.(provider.SSHKeyManager)
+			if !ok {
+				return fmt.Errorf("provider cannot delete the tracked SSH key; ownership state retained")
+			}
+			if err := manager.DeleteSSHKey(ctx, state.SSHKeyID, pub); err != nil {
+				return fmt.Errorf("failed to delete project SSH key: %w", err)
+			}
+			state.SSHKeyOwned, state.SSHKeyID = false, ""
+			if err := o.store.SaveState(state); err != nil {
+				return err
+			}
+		}
+		if err := o.store.DeleteProjectSSHKey(projectName); err != nil {
+			return fmt.Errorf("failed to remove generated SSH key: %w", err)
+		}
+		log.Printf("[orchestrator] removed generated SSH key for project %q", projectName)
+	}
+
 	// Step 3: Reset local runtime state. The project *config* is intentionally
 	// preserved -- destroy removes the cloud resources (VM, storage, firewall),
 	// not the project definition, so it can be brought back with `up` without
 	// re-running `init`. Deleting the state file returns the project to the
 	// clean post-init condition (LoadState then reports StatusStopped).
-	if err := o.store.DeleteState(projectName); err != nil {
+	if inUse {
+		// Keep ownership while another project references this key, so cleanup
+		// can be retried after that reference is removed.
+		state.Status, state.StartedAt, state.ErrorMsg = config.StatusStopped, nil, ""
+		if err := o.store.SaveState(state); err != nil {
+			return fmt.Errorf("failed to retain shared key ownership: %w", err)
+		}
+	} else if err := o.store.DeleteState(projectName); err != nil {
 		return fmt.Errorf("failed to delete state: %w", err)
 	}
 
@@ -882,7 +957,11 @@ func (o *Orchestrator) Preflight(ctx context.Context, projectName string, factor
 	}
 
 	// SSH keypair is present (or can be generated).
-	_, _, keyErr := o.store.EnsureSSHKeys()
+	state, stateErr := o.store.LoadState(projectName)
+	keyErr := stateErr
+	if keyErr == nil {
+		_, keyErr = o.store.ResolveProjectSSHKey(cfg, state, true)
+	}
 	add("ssh keys", keyErr, "present")
 
 	// Provider credentials authenticate. Constructing the provider verifies

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jufianto/serverku/internal/config"
 )
 
 // binPath is the compiled serverku binary, built once in TestMain. These are
@@ -33,6 +35,47 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+func TestInitCustomSSHKey(t *testing.T) {
+	customStore, err := config.NewStore(filepath.Join(t.TempDir(), "custom keys"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := customStore.ResolveProjectSSHKey(&config.ProjectConfig{Name: "custom"}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(key.PrivatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	_, errOut, err := runCLI(t, "--config-dir", dir, "init", "demo", "--non-interactive", "--provider", "digitalocean", "--region", "sgp1", "--size", "s-1vcpu-1gb", "--no-storage", "--ssh-key", key.PrivatePath)
+	if err != nil {
+		t.Fatalf("custom init: %v, %s", err, errOut)
+	}
+	s, err := config.NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := s.LoadProject("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SSH.PrivateKey != key.PrivatePath {
+		t.Fatal("custom key flag not saved")
+	}
+	after, err := os.ReadFile(key.PrivatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("init changed custom key")
+	}
+	if _, err := os.Stat(filepath.Join(s.KeysDir(), "demo")); !os.IsNotExist(err) {
+		t.Fatal("custom init generated an unnecessary project key")
+	}
 }
 
 // runCLI runs the built binary with the given args and returns stdout, stderr,
@@ -115,7 +158,7 @@ func TestInitWritesConfigAndAppearsInList(t *testing.T) {
 	}
 
 	// SSH keypair is generated.
-	if _, statErr := os.Stat(filepath.Join(cfgDir, "keys", "serverku_rsa")); statErr != nil {
+	if _, statErr := os.Stat(filepath.Join(cfgDir, "keys", "demo", "id_ed25519")); statErr != nil {
 		t.Errorf("expected SSH private key to be generated: %v", statErr)
 	}
 

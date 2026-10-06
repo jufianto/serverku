@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"strings"
 
 	"github.com/jufianto/serverku/internal/config"
 )
@@ -325,7 +326,9 @@ func rsyncDir(ctx context.Context, syncDir, privateKeyPath, sshUser, host, destD
 		return fmt.Errorf("rsync not found in PATH. Please install rsync for directory synchronization: %w", err)
 	}
 
-	sshOpts := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR", privateKeyPath)
+	// rsync parses the -e string itself: quote the identity path so custom keys
+	// containing spaces or quotes stay one argument.
+	sshOpts := fmt.Sprintf("ssh -i '%s' -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR", strings.ReplaceAll(privateKeyPath, "'", "''"))
 	dest := fmt.Sprintf("%s@%s:%s/", sshUser, host, destDir)
 
 	rsyncCmd := exec.CommandContext(ctx, rsyncBin,

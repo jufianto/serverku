@@ -32,6 +32,7 @@ func newInitCmd() *cobra.Command {
 		noStorage      bool
 		storageGB      int
 		nonInteractive bool
+		sshKey         string
 	)
 
 	cmd := &cobra.Command{
@@ -58,7 +59,7 @@ interactive prompts.`,
 			}
 
 			if isTerminal && !nonInteractive && !cmd.Flags().Changed("provider") {
-				return runInteractiveInit(name)
+				return runInteractiveInit(name, sshKey)
 			}
 
 			// A project ID belongs to GCP; never persist it for DigitalOcean.
@@ -91,6 +92,7 @@ interactive prompts.`,
 
 			// Non-interactive mode with flags
 			cfg := &config.ProjectConfig{
+				SSH:       config.SSHConfig{PrivateKey: sshKey},
 				Name:      name,
 				Provider:  provider,
 				ProjectID: projectID,
@@ -121,14 +123,13 @@ interactive prompts.`,
 				return err
 			}
 
-			if err := store.SaveProject(cfg); err != nil {
-				return err
-			}
-
 			// Ensure SSH keys exist
-			_, _, err = store.EnsureSSHKeys()
+			_, err = store.ResolveProjectSSHKey(cfg, nil, true)
 			if err != nil {
 				return fmt.Errorf("failed to generate SSH keys: %w", err)
+			}
+			if err := store.SaveProject(cfg); err != nil {
+				return err
 			}
 
 			fmt.Printf("Project %q created at %s/projects/%s.yaml\n", name, store.BaseDir(), name)
@@ -147,12 +148,14 @@ interactive prompts.`,
 	cmd.Flags().BoolVar(&noStorage, "no-storage", false, "create a fully stateless project (no persistent disk)")
 	cmd.Flags().IntVar(&storageGB, "storage-gb", 20, "persistent disk size in GB")
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "skip interactive prompts")
+	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "existing unencrypted SSH private key (default: generate a project key)")
 
 	return cmd
 }
 
-func runInteractiveInit(name string) error {
+func runInteractiveInit(name string, sshKey string) error {
 	initial := &config.ProjectConfig{Name: name, VM: config.VMConfig{Spot: true},
+		SSH:     config.SSHConfig{PrivateKey: sshKey},
 		Storage: config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"}, ComposeFile: "docker-compose.yml"}
 	cfg, err := promptProjectConfig(initial)
 	if err != nil {
@@ -163,7 +166,7 @@ func runInteractiveInit(name string) error {
 		return err
 	}
 	cfg.Notifications.Ntfy.Topic = topic
-	if _, _, err := store.EnsureSSHKeys(); err != nil {
+	if _, err := store.ResolveProjectSSHKey(cfg, nil, true); err != nil {
 		return fmt.Errorf("failed to generate SSH keys: %w", err)
 	}
 	if err := store.SaveProject(cfg); err != nil {

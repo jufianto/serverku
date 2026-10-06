@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,9 +50,17 @@ func (p *Provider) CreateVM(ctx context.Context, cfg provider.VMConfig) (*provid
 		return nil, errors.New("DigitalOcean provider does not support spot instances")
 	}
 
-	key, err := p.ensureSSHKey(ctx, "serverku-"+cfg.Name, cfg.SSHPubKey)
-	if err != nil {
-		return nil, err
+	key := &provider.SSHKey{ID: cfg.SSHKeyID}
+	if key.ID == "" {
+		var err error
+		key, err = p.ensureSSHKey(ctx, "serverku-"+cfg.Name, cfg.SSHPubKey)
+		if err != nil {
+			return nil, err
+		}
+	}
+	keyID, err := strconv.Atoi(key.ID)
+	if err != nil || keyID <= 0 {
+		return nil, fmt.Errorf("invalid DigitalOcean SSH key ID %q", key.ID)
 	}
 
 	// Older init versions wrote GCP's image family for DigitalOcean too.
@@ -69,7 +78,7 @@ func (p *Provider) CreateVM(ctx context.Context, cfg provider.VMConfig) (*provid
 			Slug: image,
 		},
 		SSHKeys: []godo.DropletCreateSSHKey{
-			{ID: key.ID, Fingerprint: key.Fingerprint},
+			{ID: keyID, Fingerprint: key.Fingerprint},
 		},
 		Tags: cfg.Tags,
 		// DigitalOcean injects the account SSH key into root's authorized_keys
@@ -97,7 +106,7 @@ func (p *Provider) CreateVM(ctx context.Context, cfg provider.VMConfig) (*provid
 // ensureSSHKey reuses the account key by identity, regardless of its name.
 // Multiple projects share the local serverku key; DigitalOcean rejects duplicate
 // public keys even when they are registered under different names.
-func (p *Provider) ensureSSHKey(ctx context.Context, name, publicKey string) (*godo.Key, error) {
+func (p *Provider) ensureSSHKey(ctx context.Context, name, publicKey string) (*provider.SSHKey, error) {
 	parsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
 	if err != nil {
 		return nil, fmt.Errorf("invalid SSH public key: %w", err)
@@ -107,7 +116,7 @@ func (p *Provider) ensureSSHKey(ctx context.Context, name, publicKey string) (*g
 	key, response, err := p.client.Keys.GetByFingerprint(ctx, fingerprint)
 	if err == nil {
 		log.Printf("[digitalocean] reusing SSH key %q (id: %d)", key.Name, key.ID)
-		return key, nil
+		return accountSSHKey(key, false), nil
 	}
 	if response == nil || response.StatusCode != http.StatusNotFound {
 		return nil, fmt.Errorf("failed to look up SSH key in DigitalOcean: %w", err)
@@ -119,17 +128,56 @@ func (p *Provider) ensureSSHKey(ctx context.Context, name, publicKey string) (*g
 	})
 	if err == nil {
 		log.Printf("[digitalocean] SSH key %q registered (id: %d)", key.Name, key.ID)
-		return key, nil
+		return accountSSHKey(key, true), nil
 	}
 	// Another concurrent project may have registered the same key after our
 	// lookup. Only accept the conflict if that exact fingerprint now exists.
 	if response != nil && response.StatusCode == http.StatusUnprocessableEntity {
 		if existing, _, lookupErr := p.client.Keys.GetByFingerprint(ctx, fingerprint); lookupErr == nil {
 			log.Printf("[digitalocean] reusing concurrently registered SSH key %q (id: %d)", existing.Name, existing.ID)
-			return existing, nil
+			return accountSSHKey(existing, false), nil
 		}
 	}
 	return nil, fmt.Errorf("failed to create SSH key in DigitalOcean: %w", err)
+}
+
+func accountSSHKey(key *godo.Key, created bool) *provider.SSHKey {
+	return &provider.SSHKey{ID: strconv.Itoa(key.ID), Name: key.Name, Fingerprint: key.Fingerprint, Created: created}
+}
+
+func (p *Provider) EnsureProjectSSHKey(ctx context.Context, projectName, publicKey string) (*provider.SSHKey, error) {
+	return p.ensureSSHKey(ctx, "serverku-"+projectName, publicKey)
+}
+
+// DeleteSSHKey verifies both ID and fingerprint before deleting an owned key.
+func (p *Provider) DeleteSSHKey(ctx context.Context, id, publicKey string) error {
+	keyID, err := strconv.Atoi(id)
+	if err != nil || keyID <= 0 {
+		return fmt.Errorf("invalid SSH key ID %q", id)
+	}
+	parsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
+	if err != nil {
+		return fmt.Errorf("invalid recorded SSH public key: %w", err)
+	}
+	key, response, err := p.client.Keys.GetByID(ctx, keyID)
+	if response != nil && response.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to verify SSH key before deletion: %w", err)
+	}
+	if key.Fingerprint != ssh.FingerprintLegacyMD5(parsed) {
+		return fmt.Errorf("SSH key %s fingerprint differs from recorded key; refusing deletion", id)
+	}
+	log.Printf("[digitalocean] deleting project SSH key %q (id: %s)", key.Name, id)
+	response, err = p.client.Keys.DeleteByID(ctx, keyID)
+	if response != nil && response.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to delete SSH key: %w", err)
+	}
+	return nil
 }
 
 // serverkuUserData returns a cloud-init config that provisions the "serverku"
@@ -524,7 +572,7 @@ func (p *Provider) ListComponents(ctx context.Context, q provider.ComponentQuery
 
 	// All local projects share a key. CreateVM reuses it by fingerprint,
 	// regardless of which project originally registered its account name.
-	keyComponent := provider.Component{Kind: "SSH key", Name: "local serverku key", Shared: true}
+	keyComponent := provider.Component{Kind: "SSH key", Name: "local serverku key", Shared: !q.SSHKeyOwned, RemovedByDestroy: q.SSHKeyOwned}
 	if q.SSHPubKey == "" {
 		keyComponent.LookupFailed = true
 		keyComponent.Detail = "local public key unavailable"

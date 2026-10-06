@@ -357,7 +357,7 @@ is for iterating on it.)
 serverku down myapp
 ```
 
-The VM is destroyed. Persistent storage remains available for the next `serverku up`.
+The VM is destroyed. Persistent storage and snapshots remain available for the next `serverku up`.
 
 ### 7. Delete the project
 
@@ -365,8 +365,12 @@ The VM is destroyed. Persistent storage remains available for the next `serverku
 serverku destroy myapp
 ```
 
-This removes the VM, persistent storage, managed firewall, and local runtime state.
-The project YAML is kept for a future `up`. Data on deleted disks is permanently lost.
+This removes the VM, persistent disks (including old disks retained by restore),
+project snapshots, managed firewall, generated project SSH keys/owned account
+registrations, and local runtime state.
+The project YAML is kept for a future `up`. Data on deleted disks and snapshots is permanently lost. Failed cleanup keeps
+runtime state for retry; `status` reports incomplete cleanup, and `up` waits
+until `destroy` succeeds.
 
 ## Commands
 
@@ -379,8 +383,8 @@ The project YAML is kept for a future `up`. Data on deleted disks is permanently
 | `serverku check <project>` | Preflight: validate config, compose file, credentials, DNS — before spending anything. |
 | `serverku up <project>` | Create VM, attach storage, provision, sync, and deploy. |
 | `serverku deploy <project>` | Push code changes to the running VM: re-sync, rewrite compose, `compose up -d`. Same IP, seconds not minutes. |
-| `serverku down <project>` | Destroy VM while preserving persistent storage. Use `-f/--force` to skip the confirmation prompt. |
-| `serverku destroy <project>` | Delete VM, storage, managed firewall, and runtime state; keep project YAML. Use `-f/--force` to skip the confirmation prompt. |
+| `serverku down <project>` | Destroy VM while preserving persistent disks and snapshots. Use `-f/--force` to skip the confirmation prompt. |
+| `serverku destroy <project>` | Delete VM, disks, snapshots, managed firewall, and runtime state; keep project YAML. Use `-f/--force` to skip the confirmation prompt. |
 | `serverku status <project>` | Show project status and reconcile with provider. |
 | `serverku list` | List saved projects with locally tracked storage and estimated costs. Use `status <project>` for live resources. |
 | `serverku ssh <project>` | Open an interactive SSH shell. |
@@ -576,6 +580,9 @@ Notes:
   `--name`.
 - Snapshots are crash-consistent (taken live); for application-consistent backups,
   quiesce or stop the workload first (e.g. `serverku down`, then `backup`).
+- `down` preserves disks and snapshots. `destroy` permanently deletes both,
+  including backups with custom names and tracked old disks retained by restore.
+  Keep an external backup if you need recovery after destroy.
 - The project must have `storage.enabled` and an existing disk (run `serverku up`
   at least once).
 

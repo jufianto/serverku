@@ -239,7 +239,7 @@ skwp backup wp-pr21 --name wp-pr21-installed
 ```
 
 Record the snapshot ID. The snapshot is a separately billed resource and
-survives `destroy`. This verifies backup creation; it is not proof of restore.
+survives `down` but is permanently deleted by `destroy`. This verifies backup creation; it is not proof of restore.
 Serverku has a `restore` command, but restore testing is a separate destructive
 scenario involving a new volume and explicit cleanup of the previous volume.
 Do not restore over this installed site just to finish the first walkthrough.
@@ -257,15 +257,11 @@ skwp destroy wp-pr21
 ```
 
 Confirm the prompt only if you intend to delete the site's persistent data.
-PR #21 removes the Droplet and volume, resets runtime state, and keeps the
-project YAML. Verify resource deletion in the DO console: this PR's inventory
-can confuse lookup errors with missing resources and can omit snapshots
-after the source volume is deleted.
-
-Remove the test-created account SSH key `serverku-serverku-wp-pr21` once no
-Droplet uses it. If you created a snapshot, delete that snapshot separately
-when you no longer need the backup. Keep local credentials/state until you
-have confirmed cloud cleanup, including after a failed `up`.
+PR #21 removes the Droplet, project volumes and snapshots, and generated
+project SSH keys/owned account registrations. It resets runtime state and
+keeps the project YAML. Custom or shared SSH keys are retained. Verify
+resource deletion in the DO console; keep local credentials/state until
+cloud cleanup succeeds, including after a failed `up` or `destroy`.
 
 Droplets bill while they exist, including when powered off. Volumes bill
 while they exist, including when detached. The 10 GiB volume has a $1/month

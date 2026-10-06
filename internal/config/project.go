@@ -328,25 +328,34 @@ const (
 // ProjectState holds the runtime state of a project, managed by serverku.
 // Stored as JSON at ~/.serverku/state/<name>.json.
 type ProjectState struct {
-	ProjectName       string        `json:"project_name"`
-	Status            ProjectStatus `json:"status"`
-	VMID              string        `json:"vm_id,omitempty"`
-	VMName            string        `json:"vm_name,omitempty"` // Instance name (used by GCP for API calls)
-	DiskID            string        `json:"disk_id,omitempty"`
-	DiskName          string        `json:"disk_name,omitempty"` // Disk name (used by GCP for API calls)
-	ExternalIP        string        `json:"external_ip,omitempty"`
-	Provider          string        `json:"provider"`
-	Region            string        `json:"region"`
-	Zone              string        `json:"zone,omitempty"`
-	CreatedAt         *time.Time    `json:"created_at,omitempty"`
-	StartedAt         *time.Time    `json:"started_at,omitempty"`
-	StoppedAt         *time.Time    `json:"stopped_at,omitempty"`
-	ErrorMsg          string        `json:"error_msg,omitempty"`
-	SSHPrivateKeyPath string        `json:"ssh_private_key_path,omitempty"`
-	SSHPublicKey      string        `json:"ssh_public_key,omitempty"`
-	SSHKeyManaged     bool          `json:"ssh_key_managed,omitempty"`
-	SSHKeyID          string        `json:"ssh_key_id,omitempty"`
-	SSHKeyOwned       bool          `json:"ssh_key_owned,omitempty"`
+	ProjectName       string             `json:"project_name"`
+	Status            ProjectStatus      `json:"status"`
+	VMID              string             `json:"vm_id,omitempty"`
+	VMName            string             `json:"vm_name,omitempty"` // Instance name (used by GCP for API calls)
+	DiskID            string             `json:"disk_id,omitempty"`
+	DiskName          string             `json:"disk_name,omitempty"` // Disk name (used by GCP for API calls)
+	ExternalIP        string             `json:"external_ip,omitempty"`
+	Provider          string             `json:"provider"`
+	Region            string             `json:"region"`
+	Zone              string             `json:"zone,omitempty"`
+	CreatedAt         *time.Time         `json:"created_at,omitempty"`
+	StartedAt         *time.Time         `json:"started_at,omitempty"`
+	StoppedAt         *time.Time         `json:"stopped_at,omitempty"`
+	ErrorMsg          string             `json:"error_msg,omitempty"`
+	SSHPrivateKeyPath string             `json:"ssh_private_key_path,omitempty"`
+	SSHPublicKey      string             `json:"ssh_public_key,omitempty"`
+	SSHKeyManaged     bool               `json:"ssh_key_managed,omitempty"`
+	SSHKeyID          string             `json:"ssh_key_id,omitempty"`
+	SSHKeyOwned       bool               `json:"ssh_key_owned,omitempty"`
+	Snapshots         []ResourceIdentity `json:"snapshots,omitempty"`
+	RetainedDisks     []ResourceIdentity `json:"retained_disks,omitempty"`
+	CleanupPending    bool               `json:"cleanup_pending,omitempty"`
+}
+
+// ResourceIdentity survives down/up and records resources across disk restores.
+type ResourceIdentity struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // IsRunning returns true if the project has a VM currently running.

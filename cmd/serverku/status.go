@@ -155,6 +155,9 @@ func printProjectStatus(cfg *config.ProjectConfig, state *config.ProjectState, r
 	}
 	fmt.Println()
 	fmt.Printf("Status:    %s\n", state.Status)
+	if state.CleanupPending {
+		fmt.Printf("Cleanup:   incomplete; retry serverku destroy %s\n", cfg.Name)
+	}
 
 	if state.ExternalIP != "" {
 		fmt.Printf("IP:        %s\n", state.ExternalIP)
@@ -219,12 +222,21 @@ func printComponents(ctx context.Context, cfg *config.ProjectConfig, state *conf
 			keyOwned = false
 		}
 	}
+	var snapshots []provider.Snapshot
+	for _, snap := range state.Snapshots {
+		snapshots = append(snapshots, provider.Snapshot{ID: snap.ID, Name: snap.Name})
+	}
+	var retained []provider.DiskIdentity
+	for _, disk := range state.RetainedDisks {
+		retained = append(retained, provider.DiskIdentity{ID: disk.ID, Name: disk.Name})
+	}
 	comps, err := lister.ListComponents(ctx, provider.ComponentQuery{
 		ProjectName: cfg.Name,
 		VMName:      vmName,
 		DiskName:    diskName,
 		SSHPubKey:   pubKey,
 		SSHKeyOwned: keyOwned,
+		DiskID:      state.DiskID, Snapshots: snapshots, RetainedDisks: retained,
 	})
 	if err != nil || len(comps) == 0 {
 		return

@@ -43,14 +43,14 @@ func ParseProjectDocument(name string, data []byte) (*ProjectConfig, error) {
 // ValidateProjectChange keeps existing resources reachable through their config.
 func ValidateProjectChange(before, after *ProjectConfig, state *ProjectState) error {
 	hasVM := state.VMID != "" || state.VMName != "" || state.IsRunning() || state.Status == StatusStopping
-	hasDisk := state.DiskID != "" || state.DiskName != ""
+	hasDisk := state.DiskID != "" || state.DiskName != "" || len(state.RetainedDisks) > 0
 	if before != nil && before.SSH.PrivateKey != after.SSH.PrivateKey && (hasVM || state.SSHPrivateKeyPath != "" || state.SSHKeyOwned) {
 		return fmt.Errorf("cannot change the SSH key while a VM or SSH identity is tracked; destroy the project resources before changing ssh.private_key (persistent data must be backed up first)")
 	}
 	if state.SSHKeyOwned && before != nil && before.Provider != after.Provider {
 		return fmt.Errorf("cannot change provider while an owned SSH key is tracked; destroy its resources first")
 	}
-	if !hasVM && !hasDisk {
+	if !hasVM && !hasDisk && len(state.Snapshots) == 0 && !state.CleanupPending {
 		return nil
 	}
 	if before == nil {
@@ -58,7 +58,7 @@ func ValidateProjectChange(before, after *ProjectConfig, state *ProjectState) er
 	}
 	projectChanged := (before.Provider == "gcp" || after.Provider == "gcp") && before.ProjectID != after.ProjectID
 	if before.Provider != after.Provider || projectChanged || before.Region != after.Region || before.Zone != after.Zone {
-		return fmt.Errorf("cannot change provider, project ID, region or zone while a VM or persistent disk is tracked; keep the current placement or migrate resources first")
+		return fmt.Errorf("cannot change provider, project ID, region or zone while a VM, persistent disk or snapshot is tracked; keep the current placement or migrate resources first")
 	}
 	if hasDisk && (before.Storage.Enabled != after.Storage.Enabled || before.Storage.SizeGB != after.Storage.SizeGB) {
 		return fmt.Errorf("cannot disable or resize a tracked persistent disk through config editing; use a separate storage migration")

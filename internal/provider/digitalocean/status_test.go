@@ -26,6 +26,37 @@ func TestGetVMStatusMissingDroplet(t *testing.T) {
 	}
 }
 
+func TestInventorySnapshotsAreRemovedByDestroyEvenAfterSourceDeletion(t *testing.T) {
+	p := pricingTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatal("inventory must never delete resources")
+		}
+		switch r.URL.Path {
+		case "/v2/droplets":
+			_, _ = w.Write([]byte(`{"droplets":[]}`))
+		case "/v2/volumes":
+			_, _ = w.Write([]byte(`{"volumes":[]}`))
+		case "/v2/snapshots":
+			_ = json.NewEncoder(w).Encode(map[string]any{"snapshots": []godo.Snapshot{{ID: "ours", Name: "custom-name", ResourceID: "deleted-volume"}, {ID: "other", ResourceID: "another-project"}}})
+		default:
+			t.Fatalf("unexpected request: %s", r.URL)
+		}
+	})
+	comps, err := p.ListComponents(context.Background(), provider.ComponentQuery{VMName: "serverku-demo", DiskName: "serverku-demo-data", DiskID: "deleted-volume"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range comps {
+		if c.Kind == "Snapshot" {
+			if !c.Present || !c.RemovedByDestroy || c.LookupFailed || c.Detail != "1 found" {
+				t.Fatalf("incorrect snapshot inventory: %+v", c)
+			}
+			return
+		}
+	}
+	t.Fatal("snapshot missing from inventory after source volume deletion")
+}
+
 func TestListComponentsSSHKeyIdentity(t *testing.T) {
 	pub, err := ssh.NewPublicKey(ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)).Public())
 	if err != nil {

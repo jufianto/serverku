@@ -622,7 +622,7 @@ func (g *GCPProvider) ValidateCredentials(ctx context.Context) error {
 
 // ListComponents reports the live state of the GCP resources serverku manages
 // for a project: the instance, disk and firewall rule (all removed by destroy),
-// plus any disk snapshots (orphans -- destroy leaves them). The SSH key rides
+// plus any disk snapshots (removed by destroy). The SSH key rides
 // in instance metadata and dies with the VM, so it is not a separate resource.
 func (g *GCPProvider) ListComponents(ctx context.Context, q provider.ComponentQuery) ([]provider.Component, error) {
 	var comps []provider.Component
@@ -644,6 +644,11 @@ func (g *GCPProvider) ListComponents(ctx context.Context, q provider.ComponentQu
 		comps = append(comps, provider.Component{Kind: "Volume", Name: q.DiskName, Detail: detail, Present: present, RemovedByDestroy: true})
 	}
 
+	for _, disk := range q.RetainedDisks {
+		_, err := g.service.Disks.Get(g.projectID, g.zone, disk.Name).Context(ctx).Do()
+		comps = append(comps, provider.Component{Kind: "Volume", Name: disk.Name, Detail: "retained after restore", Present: err == nil, LookupFailed: err != nil && !isNotFoundErr(err), RemovedByDestroy: true})
+	}
+
 	// Firewall rule.
 	fwName := fmt.Sprintf("serverku-%s-fw", q.ProjectName)
 	fwPresent := false
@@ -652,17 +657,18 @@ func (g *GCPProvider) ListComponents(ctx context.Context, q provider.ComponentQu
 	}
 	comps = append(comps, provider.Component{Kind: "Firewall", Name: fwName, Present: fwPresent, RemovedByDestroy: true})
 
-	// Disk snapshots -- orphan. Match by source disk name suffix.
-	if q.DiskName != "" {
-		if list, err := g.service.Snapshots.List(g.projectID).Context(ctx).Do(); err == nil {
-			count := 0
-			for _, s := range list.Items {
-				if strings.HasSuffix(s.SourceDisk, "/"+q.DiskName) {
-					count++
-				}
-			}
-			comps = append(comps, provider.Component{Kind: "Snapshot", Detail: fmt.Sprintf("%d found", count), Present: count > 0, RemovedByDestroy: false})
+	// Snapshots belong to the project's source disks or recorded backups.
+	disks := append([]provider.DiskIdentity{}, q.RetainedDisks...)
+	if q.DiskName != "" || q.DiskID != "" {
+		disks = append(disks, provider.DiskIdentity{ID: q.DiskID, Name: q.DiskName})
+	}
+	if len(disks) > 0 || len(q.Snapshots) > 0 {
+		snaps, err := g.ListProjectSnapshots(ctx, provider.SnapshotQuery{Disks: disks, Tracked: q.Snapshots})
+		detail := fmt.Sprintf("%d found", len(snaps))
+		if err != nil {
+			detail = "snapshot lookup failed"
 		}
+		comps = append(comps, provider.Component{Kind: "Snapshot", Detail: detail, Present: len(snaps) > 0, RemovedByDestroy: true, LookupFailed: err != nil})
 	}
 
 	return comps, nil

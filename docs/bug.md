@@ -248,8 +248,9 @@ like `DNSManager`/`FirewallManager`). `serverku status` now prints a
 exists, and flagging orphans (`⚠ destroy won't remove`) with a manual-cleanup
 warning. Live-verified against the provider API:
 
-- DigitalOcean: VM, Volume (removed by destroy); SSH key, Snapshots (orphans).
-- GCP: VM, Disk, Firewall (removed by destroy); Snapshots (orphans). SSH key
+- DigitalOcean: VM, Volume, Snapshots, and owned project SSH keys are removed
+  by destroy; custom/shared SSH keys are retained.
+- GCP: VM, Disk, Firewall, Snapshots (removed by destroy). SSH key
   rides in instance metadata and dies with the VM, so it is not listed.
 
 **Known limitation (follow-up).** DNS A records (when `dns.enabled`) are not yet

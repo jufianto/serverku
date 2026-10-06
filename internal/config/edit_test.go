@@ -86,3 +86,18 @@ func TestMergeProviderChangeRemovesGCPFields(t *testing.T) {
 		t.Fatal("provider merge invalid")
 	}
 }
+
+func TestSnapshotAndRetainedDiskPreventPlacementChanges(t *testing.T) {
+	before := &ProjectConfig{Provider: "gcp", ProjectID: "original-project", Region: "us-central1", Zone: "us-central1-a"}
+	after := *before
+	after.ProjectID = "other-project"
+	for _, state := range []*ProjectState{
+		{Snapshots: []ResourceIdentity{{ID: "snapshot", Name: "custom"}}},
+		{RetainedDisks: []ResourceIdentity{{ID: "disk", Name: "old"}}},
+		{CleanupPending: true},
+	} {
+		if err := ValidateProjectChange(before, &after, state); err == nil {
+			t.Fatal("placement change would lose resources still awaiting cleanup")
+		}
+	}
+}

@@ -547,8 +547,7 @@ func (p *Provider) AccountEmail(ctx context.Context) (string, error) {
 
 // ListComponents reports the live state of the DigitalOcean resources serverku
 // manages for a project: the droplet and volume (removed by destroy), plus the
-// shared account SSH key (intentionally retained) and volume snapshots
-// (orphans -- destroy leaves them).
+// shared account SSH key (intentionally retained) and volume snapshots (removed by destroy).
 func (p *Provider) ListComponents(ctx context.Context, q provider.ComponentQuery) ([]provider.Component, error) {
 	var comps []provider.Component
 
@@ -570,8 +569,25 @@ func (p *Provider) ListComponents(ctx context.Context, q provider.ComponentQuery
 		comps = append(comps, provider.Component{Kind: "Volume", Name: q.DiskName, Detail: detail, Present: present, RemovedByDestroy: true})
 	}
 
-	// All local projects share a key. CreateVM reuses it by fingerprint,
-	// regardless of which project originally registered its account name.
+	for _, disk := range q.RetainedDisks {
+		c := provider.Component{Kind: "Volume", Name: disk.Name, Detail: "retained after restore", RemovedByDestroy: true}
+		if disk.ID != "" {
+			vol, resp, err := p.client.Storage.GetVolume(ctx, disk.ID)
+			c.Present = err == nil
+			c.LookupFailed = err != nil && (resp == nil || resp.StatusCode != http.StatusNotFound)
+			if err == nil {
+				c.Detail = fmt.Sprintf("%dGB; retained after restore", vol.SizeGigaBytes)
+			}
+		} else {
+			vols, _, err := p.client.Storage.ListVolumes(ctx, &godo.ListVolumeParams{Name: disk.Name})
+			c.LookupFailed = err != nil
+			c.Present = err == nil && len(vols) > 0
+		}
+		comps = append(comps, c)
+	}
+
+	// Resolve the actual SSH registration by fingerprint, including custom
+	// and legacy keys registered under another project name.
 	keyComponent := provider.Component{Kind: "SSH key", Name: "local serverku key", Shared: !q.SSHKeyOwned, RemovedByDestroy: q.SSHKeyOwned}
 	if q.SSHPubKey == "" {
 		keyComponent.LookupFailed = true
@@ -595,17 +611,21 @@ func (p *Provider) ListComponents(ctx context.Context, q provider.ComponentQuery
 	}
 	comps = append(comps, keyComponent)
 
-	// Volume snapshots -- orphan. Attributable while the volume exists.
-	if volID != "" {
-		if snaps, _, err := p.client.Snapshots.ListVolume(ctx, &godo.ListOptions{PerPage: 200}); err == nil {
-			count := 0
-			for _, s := range snaps {
-				if s.ResourceID == volID {
-					count++
-				}
-			}
-			comps = append(comps, provider.Component{Kind: "Snapshot", Detail: fmt.Sprintf("%d found", count), Present: count > 0, RemovedByDestroy: false})
+	// Snapshots belong to the project's source disks or recorded backups.
+	if q.DiskID == "" {
+		q.DiskID = volID
+	}
+	disks := append([]provider.DiskIdentity{}, q.RetainedDisks...)
+	if q.DiskName != "" || q.DiskID != "" {
+		disks = append(disks, provider.DiskIdentity{ID: q.DiskID, Name: q.DiskName})
+	}
+	if len(disks) > 0 || len(q.Snapshots) > 0 {
+		snaps, err := p.ListProjectSnapshots(ctx, provider.SnapshotQuery{Disks: disks, Tracked: q.Snapshots})
+		detail := fmt.Sprintf("%d found", len(snaps))
+		if err != nil {
+			detail = "snapshot lookup failed"
 		}
+		comps = append(comps, provider.Component{Kind: "Snapshot", Detail: detail, Present: len(snaps) > 0, RemovedByDestroy: true, LookupFailed: err != nil})
 	}
 
 	return comps, nil

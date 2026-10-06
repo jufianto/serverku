@@ -28,6 +28,9 @@ type mockProvider struct {
 	snapshotDiskFunc  func(ctx context.Context, diskName string, snapshotName string) (string, error)
 	restoreDiskFunc   func(ctx context.Context, config provider.DiskConfig, snapshot string) (*provider.Disk, error)
 
+	listSnapshotsFunc  func(context.Context, provider.SnapshotQuery) ([]provider.Snapshot, error)
+	deleteSnapshotFunc func(context.Context, provider.Snapshot) error
+	deletedSnapshots   map[string]bool
 	// Track calls for assertions
 	calls []string
 }
@@ -134,6 +137,33 @@ func (m *mockProvider) SnapshotDisk(ctx context.Context, diskName string, snapsh
 		return m.snapshotDiskFunc(ctx, diskName, snapshotName)
 	}
 	return "snap-789", nil
+}
+
+func (m *mockProvider) ListProjectSnapshots(ctx context.Context, q provider.SnapshotQuery) ([]provider.Snapshot, error) {
+	m.calls = append(m.calls, "ListProjectSnapshots")
+	if m.listSnapshotsFunc != nil {
+		return m.listSnapshotsFunc(ctx, q)
+	}
+	var result []provider.Snapshot
+	for _, snap := range q.Tracked {
+		if !m.deletedSnapshots[snap.ID] {
+			result = append(result, snap)
+		}
+	}
+	return result, nil
+}
+func (m *mockProvider) DeleteSnapshot(ctx context.Context, snap provider.Snapshot) error {
+	m.calls = append(m.calls, "DeleteSnapshot")
+	if m.deleteSnapshotFunc != nil {
+		if err := m.deleteSnapshotFunc(ctx, snap); err != nil {
+			return err
+		}
+	}
+	if m.deletedSnapshots == nil {
+		m.deletedSnapshots = map[string]bool{}
+	}
+	m.deletedSnapshots[snap.ID] = true
+	return nil
 }
 
 // testSetup creates a temp directory, store, and saves a test project config.
@@ -652,7 +682,7 @@ func TestDestroy(t *testing.T) {
 	}
 
 	// Should have: DetachDisk, DestroyVM (from Down), then DeleteDisk
-	expectedCalls := []string{"DetachDisk", "DestroyVM", "DeleteDisk"}
+	expectedCalls := []string{"DetachDisk", "DestroyVM", "ListProjectSnapshots", "DeleteDisk"}
 	if len(mock.calls) != len(expectedCalls) {
 		t.Fatalf("got %d calls, want %d: %v", len(mock.calls), len(expectedCalls), mock.calls)
 	}
@@ -699,7 +729,7 @@ func TestDestroyStoppedWithDisk(t *testing.T) {
 	}
 
 	// Should only delete disk (no VM to destroy)
-	expectedCalls := []string{"DeleteDisk"}
+	expectedCalls := []string{"ListProjectSnapshots", "DeleteDisk"}
 	if len(mock.calls) != len(expectedCalls) {
 		t.Fatalf("got %d calls, want %d: %v", len(mock.calls), len(expectedCalls), mock.calls)
 	}
@@ -1081,7 +1111,7 @@ func TestDestroyDeletesFirewall(t *testing.T) {
 	}
 }
 
-func TestDestroyFirewallFailureIsNonFatal(t *testing.T) {
+func TestDestroyFirewallFailureRetainsStateForRetry(t *testing.T) {
 	orch, mock, factory := firewallTestSetup(t, config.StorageConfig{Enabled: false})
 	mock.deleteFirewallFunc = func(ctx context.Context, projectName string) error {
 		return fmt.Errorf("api unavailable")
@@ -1094,8 +1124,11 @@ func TestDestroyFirewallFailureIsNonFatal(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := orch.Destroy(ctx, "test-project", factory); err != nil {
-		t.Fatalf("Destroy() should succeed despite firewall cleanup failure, got: %v", err)
+	if err := orch.Destroy(ctx, "test-project", factory); err == nil {
+		t.Fatal("destroy must report failed firewall cleanup")
+	}
+	if _, err := os.Stat(orch.store.StateDir() + "/test-project.json"); err != nil {
+		t.Fatal("cleanup state must survive a failed destroy", err)
 	}
 	if !orch.store.ProjectExists("test-project") {
 		t.Error("project config should be preserved even when firewall cleanup fails")

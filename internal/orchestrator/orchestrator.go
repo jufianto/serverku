@@ -125,6 +125,9 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	}
 
 	// Step 2: Validate not already running
+	if state.CleanupPending {
+		return nil, fmt.Errorf("project %q has an incomplete destroy; retry 'serverku destroy %s' before starting it again", projectName, projectName)
+	}
 	if state.IsRunning() {
 		return nil, fmt.Errorf("project %q is already running (status: %s, ip: %s)", projectName, state.Status, state.ExternalIP)
 	}
@@ -664,12 +667,12 @@ func (o *Orchestrator) Status(ctx context.Context, projectName string, factory P
 	return state, nil
 }
 
-// Destroy deletes the VM, disk, firewall, and generated project SSH identities.
+// Destroy deletes the VM, disks, snapshots, firewall, and generated project SSH identities.
 // Local config, custom/legacy keys, and keys referenced by other projects survive.
 //
 // The operation flow:
 //  1. Down() if running (tear down VM, detach disk)
-//  2. Delete disk if exists
+//  2. Delete project snapshots, disks, and firewall rules
 //  3. Delete owned SSH keys and reset runtime state (preserve config)
 func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory ProviderFactory) error {
 	cfg, err := o.store.LoadProject(projectName)
@@ -686,6 +689,10 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 	if err := o.hooks.Run(ctx, "pre_destroy", cfg.Hooks.PreDestroy, hookWorkDir(cfg), hookEnv(cfg, state.ExternalIP)); err != nil {
 		return fmt.Errorf("pre_destroy hook failed: %w", err)
 	}
+	state.CleanupPending = true
+	if err := o.store.SaveState(state); err != nil {
+		return fmt.Errorf("failed to record pending cleanup: %w", err)
+	}
 
 	// Step 1: If running, bring it down first. Hooks are suppressed here so a
 	// destroy fires only pre_destroy/post_destroy, not the down hooks.
@@ -701,34 +708,43 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 		}
 	}
 
-	// Step 2: Delete cloud-side leftovers (disk, firewall rules). The provider
-	// is needed for both; failing to construct it is only fatal when a disk
-	// still has to be deleted.
+	// Discover and delete snapshots before removing their source disks. Keep
+	// runtime state on any cloud cleanup failure so destroy can be retried.
 	cp, cpErr := factory(ctx, cfg)
 	if cpErr != nil {
-		if state.DiskName != "" || state.SSHKeyOwned {
-			return fmt.Errorf("failed to create cloud provider: %w", cpErr)
-		}
-		log.Printf("[orchestrator] warning: could not create provider for firewall cleanup: %v", cpErr)
-	} else {
-		if state.DiskName != "" {
-			log.Printf("[orchestrator] deleting disk %q", state.DiskName)
-			if err := cp.DeleteDisk(ctx, state.DiskName); err != nil {
-				return fmt.Errorf("failed to delete disk: %w", err)
-			}
-			state.DiskID, state.DiskName = "", ""
-			if err := o.store.SaveState(state); err != nil {
-				return fmt.Errorf("failed to save disk cleanup state: %w", err)
-			}
-		}
+		return fmt.Errorf("failed to create cloud provider: %w", cpErr)
+	}
 
-		// Firewall cleanup is best-effort: the rule is harmless on its own and
-		// the project is going away either way.
-		if fw, ok := cp.(provider.FirewallManager); ok {
-			log.Printf("[orchestrator] deleting firewall rules for project %q", projectName)
-			if err := fw.DeleteFirewall(ctx, projectName); err != nil {
-				log.Printf("[orchestrator] warning: failed to delete firewall rules (continuing): %v", err)
-			}
+	if err := o.destroySnapshots(ctx, cp, state); err != nil {
+		return err
+	}
+	for len(state.RetainedDisks) > 0 {
+		disk := state.RetainedDisks[0]
+		log.Printf("[orchestrator] deleting retained disk %q", disk.Name)
+		if err := deleteTrackedDisk(ctx, cp, disk.ID, disk.Name); err != nil {
+			return fmt.Errorf("failed to delete retained disk: %w", err)
+		}
+		state.RetainedDisks = state.RetainedDisks[1:]
+		if err := o.store.SaveState(state); err != nil {
+			return err
+		}
+	}
+	if state.DiskName != "" || state.DiskID != "" {
+		log.Printf("[orchestrator] deleting disk %q", state.DiskName)
+		if err := deleteTrackedDisk(ctx, cp, state.DiskID, state.DiskName); err != nil {
+			return fmt.Errorf("failed to delete disk: %w", err)
+		}
+		state.DiskID, state.DiskName = "", ""
+		if err := o.store.SaveState(state); err != nil {
+			return fmt.Errorf("failed to save disk cleanup state: %w", err)
+		}
+	}
+
+	// A failed firewall deletion is an incomplete destroy, not success.
+	if fw, ok := cp.(provider.FirewallManager); ok {
+		log.Printf("[orchestrator] deleting firewall rules for project %q", projectName)
+		if err := fw.DeleteFirewall(ctx, projectName); err != nil {
+			return fmt.Errorf("failed to delete firewall rules: %w", err)
 		}
 	}
 
@@ -782,6 +798,7 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 	if inUse {
 		// Keep ownership while another project references this key, so cleanup
 		// can be retried after that reference is removed.
+		state.CleanupPending = false
 		state.Status, state.StartedAt, state.ErrorMsg = config.StatusStopped, nil, ""
 		if err := o.store.SaveState(state); err != nil {
 			return fmt.Errorf("failed to retain shared key ownership: %w", err)
@@ -850,6 +867,10 @@ func (o *Orchestrator) Backup(ctx context.Context, projectName, snapshotName str
 		return nil, fmt.Errorf("failed to snapshot disk: %w", err)
 	}
 
+	state.Snapshots = append(state.Snapshots, config.ResourceIdentity{ID: snapshotID, Name: snapshotName})
+	if err := o.store.SaveState(state); err != nil {
+		return nil, fmt.Errorf("snapshot %q created (id: %s) but failed to save backup state: %w", snapshotName, snapshotID, err)
+	}
 	return &BackupResult{
 		SnapshotName: snapshotName,
 		SnapshotID:   snapshotID,
@@ -1056,6 +1077,19 @@ func (o *Orchestrator) Restore(ctx context.Context, projectName, snapshot, newDi
 		return nil, fmt.Errorf("failed to create cloud provider: %w", err)
 	}
 
+	if manager, ok := cp.(provider.SnapshotManager); ok && (state.DiskName != "" || len(state.RetainedDisks) > 0) {
+		snapshots, err := manager.ListProjectSnapshots(ctx, projectSnapshotQuery(state))
+		if err != nil {
+			return nil, fmt.Errorf("failed to discover backups before restore: %w", err)
+		}
+		state.Snapshots = nil
+		for _, snap := range snapshots {
+			state.Snapshots = append(state.Snapshots, config.ResourceIdentity{ID: snap.ID, Name: snap.Name})
+		}
+		if err := o.store.SaveState(state); err != nil {
+			return nil, err
+		}
+	}
 	log.Printf("[orchestrator] restoring snapshot %q into new disk %q", snapshot, newDiskName)
 	disk, err := cp.CreateDiskFromSnapshot(ctx, provider.DiskConfig{
 		Name:      newDiskName,
@@ -1076,6 +1110,10 @@ func (o *Orchestrator) Restore(ctx context.Context, projectName, snapshot, newDi
 
 	// Point the project at the restored disk; the next `up` attaches it.
 	oldDisk := state.DiskName
+	oldDiskID := state.DiskID
+	if oldDisk != "" {
+		state.RetainedDisks = append(state.RetainedDisks, config.ResourceIdentity{ID: state.DiskID, Name: oldDisk})
+	}
 	state.DiskName = disk.Name
 	state.DiskID = disk.ID
 	if err := o.store.SaveState(state); err != nil {
@@ -1084,11 +1122,15 @@ func (o *Orchestrator) Restore(ctx context.Context, projectName, snapshot, newDi
 
 	if deleteOld && oldDisk != "" {
 		log.Printf("[orchestrator] deleting old disk %q", oldDisk)
-		if err := cp.DeleteDisk(ctx, oldDisk); err != nil {
+		if err := deleteTrackedDisk(ctx, cp, oldDiskID, oldDisk); err != nil {
 			// Non-fatal: the restore succeeded; the old disk just lingers.
 			log.Printf("[orchestrator] warning: failed to delete old disk %q (delete it manually): %v", oldDisk, err)
 		} else {
 			result.OldDeleted = true
+			state.RetainedDisks = state.RetainedDisks[:len(state.RetainedDisks)-1]
+			if err := o.store.SaveState(state); err != nil {
+				return nil, fmt.Errorf("failed to save old disk cleanup state: %w", err)
+			}
 		}
 	}
 

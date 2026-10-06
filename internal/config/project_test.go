@@ -305,6 +305,7 @@ func TestProjectState_IsRunning(t *testing.T) {
 		{StatusRunning, true},
 		{StatusStarting, true},
 		{StatusStopped, false},
+		{StatusDestroyed, false},
 		{StatusStopping, false},
 		{StatusError, false},
 	}

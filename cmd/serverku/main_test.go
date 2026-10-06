@@ -188,7 +188,7 @@ func TestListStorageUsesTrackedDiskInsteadOfSavedConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkList := func(wantStorage, wantCost string) {
+	checkList := func(wantStatus, wantStorage, wantCost string) {
 		t.Helper()
 		out, errOut, err := runCLI(t, "--config-dir", cfgDir, "list")
 		if err != nil {
@@ -198,13 +198,13 @@ func TestListStorageUsesTrackedDiskInsteadOfSavedConfig(t *testing.T) {
 		if len(lines) != 3 {
 			t.Fatalf("unexpected list output: %s", out)
 		}
-		want := "kuma digitalocean stopped - " + wantStorage + " " + wantCost
+		want := "kuma digitalocean " + wantStatus + " - " + wantStorage + " " + wantCost
 		if got := strings.Join(strings.Fields(lines[2]), " "); got != want {
 			t.Fatalf("list row = %q, want %q", got, want)
 		}
 	}
 	// Init only saves the desired storage; it has not created a volume.
-	checkList("none", "-")
+	checkList("stopped", "none", "-")
 	// Down retains the disk. Both ID-only and name-only state are supported.
 	for _, state := range []*config.ProjectState{
 		{ProjectName: "kuma", Status: config.StatusStopped, DiskID: "volume-id"},
@@ -213,13 +213,13 @@ func TestListStorageUsesTrackedDiskInsteadOfSavedConfig(t *testing.T) {
 		if err := s.SaveState(state); err != nil {
 			t.Fatal(err)
 		}
-		checkList("20GB (tracked)", "~$2.00/mo storage")
+		checkList("stopped", "20GB (tracked)", "~$2.00/mo storage")
 	}
-	// Destroy clears runtime state but preserves the project for a later up.
-	if err := s.DeleteState("kuma"); err != nil {
+	// Destroy saves a resource-free marker while keeping the project YAML.
+	if err := s.SaveState(&config.ProjectState{ProjectName: "kuma", Status: config.StatusDestroyed}); err != nil {
 		t.Fatal(err)
 	}
-	checkList("none", "-")
+	checkList("destroyed", "none", "-")
 	cfg, err := s.LoadProject("kuma")
 	if err != nil {
 		t.Fatal(err)

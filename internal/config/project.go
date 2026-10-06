@@ -318,11 +318,12 @@ func isValidName(name string) bool {
 type ProjectStatus string
 
 const (
-	StatusStopped  ProjectStatus = "stopped"
-	StatusStarting ProjectStatus = "starting"
-	StatusRunning  ProjectStatus = "running"
-	StatusStopping ProjectStatus = "stopping"
-	StatusError    ProjectStatus = "error"
+	StatusStopped   ProjectStatus = "stopped"
+	StatusDestroyed ProjectStatus = "destroyed"
+	StatusStarting  ProjectStatus = "starting"
+	StatusRunning   ProjectStatus = "running"
+	StatusStopping  ProjectStatus = "stopping"
+	StatusError     ProjectStatus = "error"
 )
 
 // ProjectState holds the runtime state of a project, managed by serverku.

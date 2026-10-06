@@ -258,7 +258,7 @@ skwp destroy wp-pr21
 
 Confirm the prompt only if you intend to delete the site's persistent data.
 PR #21 removes the Droplet, project volumes and snapshots, and generated
-project SSH keys/owned account registrations. It resets runtime state and
+project SSH keys/owned account registrations. It clears resource tracking, records status `destroyed`, and
 keeps the project YAML. Custom or shared SSH keys are retained. Verify
 resource deletion in the DO console; keep local credentials/state until
 cloud cleanup succeeds, including after a failed `up` or `destroy`.

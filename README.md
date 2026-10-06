@@ -367,8 +367,9 @@ serverku destroy myapp
 
 This removes the VM, persistent disks (including old disks retained by restore),
 project snapshots, managed firewall, generated project SSH keys/owned account
-registrations, and local runtime state.
-The project YAML is kept for a future `up`. Data on deleted disks and snapshots is permanently lost. Failed cleanup keeps
+registrations, and resource tracking. A minimal runtime record keeps the status
+as `destroyed`. The project YAML is kept for a future `up`. Data on deleted disks
+and snapshots is permanently lost. Failed cleanup keeps
 runtime state for retry; `status` reports incomplete cleanup, and `up` waits
 until `destroy` succeeds.
 
@@ -384,7 +385,7 @@ until `destroy` succeeds.
 | `serverku up <project>` | Create VM, attach storage, provision, sync, and deploy. |
 | `serverku deploy <project>` | Push code changes to the running VM: re-sync, rewrite compose, `compose up -d`. Same IP, seconds not minutes. |
 | `serverku down <project>` | Destroy VM while preserving persistent disks and snapshots. Use `-f/--force` to skip the confirmation prompt. |
-| `serverku destroy <project>` | Delete VM, disks, snapshots, managed firewall, and runtime state; keep project YAML. Use `-f/--force` to skip the confirmation prompt. |
+| `serverku destroy <project>` | Delete VM, disks, snapshots, and managed firewall; record `destroyed` status; keep project YAML. Use `-f/--force` to skip the confirmation prompt. |
 | `serverku status <project>` | Show project status and reconcile with provider. |
 | `serverku list` | List saved projects with locally tracked storage and estimated costs. Use `status <project>` for live resources. |
 | `serverku ssh <project>` | Open an interactive SSH shell. |

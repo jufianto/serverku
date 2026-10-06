@@ -3,8 +3,6 @@ package orchestrator
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/jufianto/serverku/internal/config"
@@ -39,8 +37,12 @@ func TestDownPreservesBackupAndDestroyDeletesIt(t *testing.T) {
 	if indexOfCall(m.calls, "DeleteSnapshot") >= indexOfCall(m.calls, "DeleteDisk") || !m.deletedSnapshots["snap-789"] {
 		t.Fatalf("destroy must delete backup before disk: %v", m.calls)
 	}
-	if _, err := os.Stat(filepath.Join(o.store.StateDir(), "test-project.json")); !os.IsNotExist(err) {
-		t.Fatal("successful destroy must clear runtime state", err)
+	state, err = o.store.LoadState("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != config.StatusDestroyed || state.DiskID != "" || len(state.Snapshots) != 0 || state.CleanupPending {
+		t.Fatalf("successful destroy must leave only a destroyed record: %+v", state)
 	}
 	if !o.store.ProjectExists("test-project") {
 		t.Fatal("destroy must keep YAML")
@@ -150,5 +152,64 @@ func TestRestoreKeepsOldDiskTrackedUntilDestroy(t *testing.T) {
 	}
 	if len(deleted) != 2 || deleted[0] != "serverku-test-project-data" || deleted[1] != "restored" {
 		t.Fatalf("destroy missed restored/retained disks: %v", deleted)
+	}
+}
+
+func TestDestroyedProjectCanUpThenDownAgain(t *testing.T) {
+	o, m, factory := testSetup(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"})
+	ctx := context.Background()
+	if _, err := o.Up(ctx, "test-project", factory); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Destroy(ctx, "test-project", factory); err != nil {
+		t.Fatal(err)
+	}
+	state, err := o.Status(ctx, "test-project", factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != config.StatusDestroyed || state.VMID != "" || state.DiskID != "" || state.SSHPrivateKeyPath != "" {
+		t.Fatalf("destroyed state lost or contains old resources: %+v", state)
+	}
+	if _, err := o.Up(ctx, "test-project", factory); err != nil {
+		t.Fatal(err)
+	}
+	creates := 0
+	for _, call := range m.calls {
+		if call == "CreateDisk" {
+			creates++
+		}
+	}
+	if creates != 2 {
+		t.Fatal("up after destroy must create fresh storage")
+	}
+	if err := o.Down(ctx, "test-project", factory); err != nil {
+		t.Fatal(err)
+	}
+	state, err = o.Status(ctx, "test-project", factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != config.StatusStopped || state.DiskID == "" {
+		t.Fatalf("down must leave stopped state and storage: %+v", state)
+	}
+}
+
+func TestRestoreIntoDestroyedProjectBecomesStopped(t *testing.T) {
+	o, _, factory := testSetup(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"})
+	state := config.NewState("test-project", "gcp", "us-central1", "us-central1-a")
+	state.Status = config.StatusDestroyed
+	if err := o.store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := o.Restore(context.Background(), "test-project", "external-snapshot", "restored", false, factory); err != nil {
+		t.Fatal(err)
+	}
+	state, err := o.store.LoadState("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != config.StatusStopped || state.DiskID == "" {
+		t.Fatalf("restoring storage must transition destroyed to stopped: %+v", state)
 	}
 }

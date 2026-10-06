@@ -697,12 +697,12 @@ func TestDestroy(t *testing.T) {
 	if !orch.store.ProjectExists("test-project") {
 		t.Error("project config should be preserved after Destroy")
 	}
-	// Runtime state is reset to the clean post-init condition.
+	// A minimal destroyed record preserves the last lifecycle action.
 	st, err := orch.store.LoadState("test-project")
 	if err != nil {
 		t.Fatalf("LoadState after Destroy: %v", err)
 	}
-	if st.Status != config.StatusStopped || st.VMName != "" || st.DiskName != "" {
+	if st.Status != config.StatusDestroyed || st.VMName != "" || st.DiskName != "" {
 		t.Errorf("state should be reset after Destroy, got %+v", st)
 	}
 }

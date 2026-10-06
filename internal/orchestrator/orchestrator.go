@@ -790,21 +790,21 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 		log.Printf("[orchestrator] removed generated SSH key for project %q", projectName)
 	}
 
-	// Step 3: Reset local runtime state. The project *config* is intentionally
-	// preserved -- destroy removes the cloud resources (VM, storage, firewall),
-	// not the project definition, so it can be brought back with `up` without
-	// re-running `init`. Deleting the state file returns the project to the
-	// clean post-init condition (LoadState then reports StatusStopped).
+	// Keep a minimal destroyed record so list/status distinguish a completed
+	// destroy from down and a project that has never been started.
+	destroyed := config.NewState(projectName, cfg.Provider, cfg.Region, cfg.Zone)
+	destroyed.Status = config.StatusDestroyed
 	if inUse {
 		// Keep ownership while another project references this key, so cleanup
 		// can be retried after that reference is removed.
-		state.CleanupPending = false
-		state.Status, state.StartedAt, state.ErrorMsg = config.StatusStopped, nil, ""
-		if err := o.store.SaveState(state); err != nil {
-			return fmt.Errorf("failed to retain shared key ownership: %w", err)
-		}
-	} else if err := o.store.DeleteState(projectName); err != nil {
-		return fmt.Errorf("failed to delete state: %w", err)
+		destroyed.SSHPrivateKeyPath = state.SSHPrivateKeyPath
+		destroyed.SSHPublicKey = state.SSHPublicKey
+		destroyed.SSHKeyManaged = state.SSHKeyManaged
+		destroyed.SSHKeyID = state.SSHKeyID
+		destroyed.SSHKeyOwned = state.SSHKeyOwned
+	}
+	if err := o.store.SaveState(destroyed); err != nil {
+		return fmt.Errorf("cloud cleanup completed but failed to save destroyed status: %w", err)
 	}
 
 	log.Printf("[orchestrator] project %q destroyed (config preserved)", projectName)
@@ -1116,6 +1116,7 @@ func (o *Orchestrator) Restore(ctx context.Context, projectName, snapshot, newDi
 	}
 	state.DiskName = disk.Name
 	state.DiskID = disk.ID
+	state.Status = config.StatusStopped
 	if err := o.store.SaveState(state); err != nil {
 		return nil, fmt.Errorf("restored disk %q created but failed to save state: %w", disk.Name, err)
 	}

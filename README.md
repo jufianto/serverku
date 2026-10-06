@@ -336,6 +336,11 @@ serverku ssh myapp
 serverku tunnel myapp 5432:5432
 ```
 
+`list` shows storage tracked in local runtime state. After `destroy`, storage
+shows `none` and the cost column shows `-`. The YAML still contains the storage
+settings for your next `up`; `status` labels these as configured and reports
+the actual cloud resources under `Components (live)`.
+
 Changed your code? Push it to the running VM without recreating anything:
 
 ```bash
@@ -377,7 +382,7 @@ The project YAML is kept for a future `up`. Data on deleted disks is permanently
 | `serverku down <project>` | Destroy VM while preserving persistent storage. Use `-f/--force` to skip the confirmation prompt. |
 | `serverku destroy <project>` | Delete VM, storage, managed firewall, and runtime state; keep project YAML. Use `-f/--force` to skip the confirmation prompt. |
 | `serverku status <project>` | Show project status and reconcile with provider. |
-| `serverku list` | List all projects with status and estimated costs. |
+| `serverku list` | List saved projects with locally tracked storage and estimated costs. Use `status <project>` for live resources. |
 | `serverku ssh <project>` | Open an interactive SSH shell. |
 | `serverku open <project> [domain\|service]` | Open the running app in your browser (Caddy domain if set, else `http://<ip>`). `--print` shows the URL only. |
 | `serverku logs <project>` | Stream remote `docker compose logs -f`. |

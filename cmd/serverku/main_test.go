@@ -175,6 +175,59 @@ func TestInitWritesConfigAndAppearsInList(t *testing.T) {
 	}
 }
 
+func TestListStorageUsesTrackedDiskInsteadOfSavedConfig(t *testing.T) {
+	cfgDir := t.TempDir()
+	_, errOut, err := runCLI(t, "--config-dir", cfgDir, "init", "kuma",
+		"--non-interactive", "--provider", "digitalocean",
+		"--region", "sgp1", "--size", "s-1vcpu-1gb", "--storage-gb", "20")
+	if err != nil {
+		t.Fatalf("init: %v, %s", err, errOut)
+	}
+	s, err := config.NewStore(cfgDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkList := func(wantStorage, wantCost string) {
+		t.Helper()
+		out, errOut, err := runCLI(t, "--config-dir", cfgDir, "list")
+		if err != nil {
+			t.Fatalf("list: %v, %s", err, errOut)
+		}
+		lines := strings.Split(strings.TrimSpace(out), "\n")
+		if len(lines) != 3 {
+			t.Fatalf("unexpected list output: %s", out)
+		}
+		want := "kuma digitalocean stopped - " + wantStorage + " " + wantCost
+		if got := strings.Join(strings.Fields(lines[2]), " "); got != want {
+			t.Fatalf("list row = %q, want %q", got, want)
+		}
+	}
+	// Init only saves the desired storage; it has not created a volume.
+	checkList("none", "-")
+	// Down retains the disk. Both ID-only and name-only state are supported.
+	for _, state := range []*config.ProjectState{
+		{ProjectName: "kuma", Status: config.StatusStopped, DiskID: "volume-id"},
+		{ProjectName: "kuma", Status: config.StatusStopped, DiskName: "serverku-kuma-data"},
+	} {
+		if err := s.SaveState(state); err != nil {
+			t.Fatal(err)
+		}
+		checkList("20GB (tracked)", "~$2.00/mo storage")
+	}
+	// Destroy clears runtime state but preserves the project for a later up.
+	if err := s.DeleteState("kuma"); err != nil {
+		t.Fatal(err)
+	}
+	checkList("none", "-")
+	cfg, err := s.LoadProject("kuma")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Storage.Enabled || cfg.Storage.SizeGB != 20 {
+		t.Fatal("listing must preserve the storage settings for the next up")
+	}
+}
+
 func TestInitDuplicateFails(t *testing.T) {
 	cfgDir := t.TempDir()
 

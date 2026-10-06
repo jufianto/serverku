@@ -65,6 +65,7 @@ func newListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List all projects and their status",
+		Long:  "List saved projects with locally tracked storage and estimated costs.\nRun 'serverku status <project>' to check live cloud resources.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			names, err := store.ListProjects()
@@ -101,15 +102,23 @@ func newListCmd() *cobra.Command {
 					ip = state.ExternalIP
 				}
 
-				storage := "disabled"
-				if cfg.Storage.Enabled {
-					storage = fmt.Sprintf("%dGB", cfg.Storage.SizeGB)
+				// Config describes what the next up should create. Only a
+				// tracked disk belongs in the current storage/cost columns.
+				hasDisk := state.DiskID != "" || state.DiskName != ""
+				storage := "none"
+				if hasDisk {
+					storage = fmt.Sprintf("%dGB (tracked)", cfg.Storage.SizeGB)
 				}
 
 				// Running projects show accrued session cost at the best
 				// available rate (live API price, or table estimate marked
 				// est.); stopped projects show the storage-only estimate.
-				cost := pricing.FormatListEstimate(pricing.EstimateCost(cfg), state.IsRunning())
+				estimateCfg := *cfg
+				estimateCfg.Storage.Enabled = hasDisk
+				cost := "-"
+				if state.IsRunning() || hasDisk {
+					cost = pricing.FormatListEstimate(pricing.EstimateCost(&estimateCfg), state.IsRunning())
+				}
 				if state.IsRunning() && state.StartedAt != nil {
 					rate := rates.resolveRate(cmd.Context(), cfg)
 					if rate.Known {
@@ -140,7 +149,7 @@ func printProjectStatus(cfg *config.ProjectConfig, state *config.ProjectState, r
 	}
 	fmt.Printf("Storage:   ")
 	if cfg.Storage.Enabled {
-		fmt.Printf("%dGB at %s\n", cfg.Storage.SizeGB, cfg.Storage.MountPath)
+		fmt.Printf("%dGB at %s (configured)\n", cfg.Storage.SizeGB, cfg.Storage.MountPath)
 	} else {
 		fmt.Println("disabled (stateless)")
 	}

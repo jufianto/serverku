@@ -82,7 +82,15 @@ Wizard answers: `digitalocean`, your region, `s-1vcpu-1gb`, **No** to spot,
 
 ## Step 3 — Wire up routing and DNS
 
-Edit `~/.serverku/projects/blog.yaml`:
+Open the project configuration:
+
+```bash
+serverku edit blog
+```
+
+Set the values below. See [Editing projects](editing-projects.md) for backups and
+rerunning the setup wizard with `reinit`.
+
 
 ```yaml
 name: blog
@@ -186,8 +194,8 @@ of MySQL, take it while compute is off:
 serverku down blog && serverku backup blog --name nightly
 ```
 
-(Restore is not automated yet — create a volume from the snapshot in the
-DigitalOcean console if you ever need it.)
+Restore while stopped with `serverku restore blog nightly`, then run
+`serverku up blog` to attach the restored volume.
 
 ## Step 7 — Gone for good
 
@@ -197,8 +205,8 @@ When the blog has run its course:
 serverku destroy blog
 ```
 
-This deletes the droplet **and the volume** — snapshots are all that
-remain. Treat it as irreversible.
+This deletes the droplet, project volumes, and their snapshots. It is
+irreversible. Use `down` to preserve the volumes and snapshots.
 
 ## What you learned
 

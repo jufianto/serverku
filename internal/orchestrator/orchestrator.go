@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -124,8 +125,14 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	}
 
 	// Step 2: Validate not already running
+	if state.CleanupPending {
+		return nil, fmt.Errorf("project %q has an incomplete destroy; retry 'serverku destroy %s' before starting it again", projectName, projectName)
+	}
 	if state.IsRunning() {
 		return nil, fmt.Errorf("project %q is already running (status: %s, ip: %s)", projectName, state.Status, state.ExternalIP)
+	}
+	if state.VMName != "" || state.VMID != "" {
+		return nil, fmt.Errorf("project %q still tracks a VM; run 'serverku status %s' and recover or 'serverku down %s' before creating another VM", projectName, projectName, projectName)
 	}
 
 	// Step 2.5: pre_up hook -- runs locally before any cloud resource is created,
@@ -135,10 +142,11 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	}
 
 	// Step 3: Ensure SSH keys
-	privKeyPath, pubKey, err := o.store.EnsureSSHKeys()
+	sshKey, err := o.store.ResolveProjectSSHKey(cfg, state, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure SSH keys: %w", err)
 	}
+	privKeyPath, pubKey := sshKey.PrivatePath, sshKey.PublicKey
 
 	// Create the cloud provider
 	cp, err := factory(ctx, cfg)
@@ -155,11 +163,26 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	state.Zone = cfg.Zone
 	state.StartedAt = &now
 	state.ErrorMsg = ""
+	state.SSHPrivateKeyPath = sshKey.PrivatePath
+	state.SSHPublicKey = sshKey.PublicKey
+	state.SSHKeyManaged = sshKey.Managed
 	if err := o.store.SaveState(state); err != nil {
 		return nil, fmt.Errorf("failed to save state: %w", err)
 	}
 
 	result := &UpResult{}
+	if manager, ok := cp.(provider.SSHKeyManager); ok {
+		key, err := manager.EnsureProjectSSHKey(ctx, projectName, pubKey)
+		if err != nil {
+			o.setErrorState(state, fmt.Sprintf("failed to register SSH key: %v", err))
+			return nil, fmt.Errorf("failed to register SSH key: %w", err)
+		}
+		state.SSHKeyOwned = sshKey.Managed && (key.Created || (state.SSHKeyOwned && state.SSHKeyID == key.ID))
+		state.SSHKeyID = key.ID
+		if err := o.store.SaveState(state); err != nil {
+			return nil, fmt.Errorf("failed to save SSH key state: %w", err)
+		}
+	}
 
 	// Step 4: Create disk if storage is enabled and disk doesn't exist
 	if cfg.Storage.Enabled && state.DiskName == "" {
@@ -220,6 +243,7 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		MaxUptimeHours: cfg.VM.MaxUptimeHours,
 		Tags:           []string{"serverku", fmt.Sprintf("serverku-%s", projectName)},
 		SSHPubKey:      pubKey,
+		SSHKeyID:       state.SSHKeyID,
 		ProjectID:      cfg.ProjectID,
 	})
 	if err != nil {
@@ -242,12 +266,28 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 	if cfg.Storage.Enabled && state.DiskName != "" {
 		log.Printf("[orchestrator] attaching disk %q to VM %q", state.DiskName, vm.Name)
 
-		if err := cp.AttachDisk(ctx, vm.Name, state.DiskName); err != nil {
+		var attachErr error
+		if attacher, ok := cp.(provider.DiskAttacherByID); ok && state.DiskID != "" {
+			attachErr = attacher.AttachDiskByID(ctx, vm.Name, state.DiskID)
+		} else {
+			attachErr = cp.AttachDisk(ctx, vm.Name, state.DiskName)
+		}
+		if attachErr != nil {
 			// Disk attach failed -- destroy VM but keep disk
-			log.Printf("[orchestrator] disk attach failed, destroying VM: %v", err)
-			_ = cp.DestroyVM(ctx, vm.Name)
-			o.setErrorState(state, fmt.Sprintf("failed to attach disk: %v", err))
-			return nil, fmt.Errorf("failed to attach disk: %w", err)
+			log.Printf("[orchestrator] disk attach failed; deleting VM %q (persistent disk preserved)", vm.Name)
+			if cleanupErr := cp.DestroyVM(ctx, vm.Name); cleanupErr != nil {
+				failure := fmt.Errorf("failed to attach disk: %w; automatic VM cleanup failed: %v (VM %q may still exist)", attachErr, cleanupErr, vm.Name)
+				o.setErrorState(state, failure.Error())
+				return nil, failure
+			}
+			state.VMID = ""
+			state.VMName = ""
+			state.ExternalIP = ""
+			now := time.Now()
+			state.StoppedAt = &now
+			log.Printf("[orchestrator] VM %q deleted; cleared local VM state (persistent disk preserved)", vm.Name)
+			o.setErrorState(state, fmt.Sprintf("failed to attach disk: %v", attachErr))
+			return nil, fmt.Errorf("failed to attach disk: %w", attachErr)
 		}
 	}
 
@@ -314,6 +354,7 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		Host:            ip,
 		PrivateKeyPath:  privKeyPath,
 		SSHUser:         "serverku",
+		Provider:        cfg.Provider,
 		StorageEnabled:  cfg.Storage.Enabled,
 		DiskName:        state.DiskName,
 		MountPath:       cfg.Storage.MountPath,
@@ -325,10 +366,21 @@ func (o *Orchestrator) Up(ctx context.Context, projectName string, factory Provi
 		Heartbeat:       heartbeatOpts(ctx, cfg, cp, projectName),
 	}
 	if err := o.provisioner.Provision(ctx, provOpts); err != nil {
-		o.setErrorState(state, fmt.Sprintf("provisioning failed: %v", err))
 		// Destroy VM on provisioning failure; keep disk (data must survive).
-		log.Printf("[orchestrator] provisioning failed, destroying VM (disk preserved): %v", err)
-		_ = cp.DestroyVM(ctx, vm.Name)
+		log.Printf("[orchestrator] provisioning failed; deleting VM %q (persistent disk, if any, preserved)", vm.Name)
+		if cleanupErr := cp.DestroyVM(ctx, vm.Name); cleanupErr != nil {
+			failure := fmt.Errorf("failed to provision VM: %w; automatic VM cleanup failed: %v (VM %q may still exist)", err, cleanupErr, vm.Name)
+			log.Printf("[orchestrator] automatic VM cleanup failed; VM %q remains tracked", vm.Name)
+			o.setErrorState(state, failure.Error())
+			return nil, failure
+		}
+		state.VMID = ""
+		state.VMName = ""
+		state.ExternalIP = ""
+		now := time.Now()
+		state.StoppedAt = &now
+		log.Printf("[orchestrator] VM %q deleted; cleared local VM state (persistent disk, if any, preserved)", vm.Name)
+		o.setErrorState(state, fmt.Sprintf("provisioning failed: %v", err))
 		return nil, fmt.Errorf("failed to provision VM: %w", err)
 	}
 
@@ -379,10 +431,11 @@ func (o *Orchestrator) Deploy(ctx context.Context, projectName string) error {
 		return fmt.Errorf("pre_deploy hook failed: %w", err)
 	}
 
-	privKeyPath, err := o.store.GetSSHPrivateKeyPath()
+	sshKey, err := o.store.ResolveProjectSSHKey(cfg, state, false)
 	if err != nil {
 		return fmt.Errorf("failed to get SSH key: %w", err)
 	}
+	privKeyPath := sshKey.PrivatePath
 
 	var composeContent string
 	if cfg.ComposeFile != "" {
@@ -473,7 +526,7 @@ func (o *Orchestrator) down(ctx context.Context, projectName string, factory Pro
 
 	// Step 2.5: Teardown the VM (stop containers, unmount disk) before detaching
 	if state.ExternalIP != "" {
-		privKeyPath, err := o.store.GetSSHPrivateKeyPath()
+		sshKey, err := o.store.ResolveProjectSSHKey(cfg, state, false)
 		if err != nil {
 			log.Printf("[orchestrator] warning: could not get SSH key for teardown: %v", err)
 		} else {
@@ -485,7 +538,7 @@ func (o *Orchestrator) down(ctx context.Context, projectName string, factory Pro
 			}
 			teardownOpts := provisioner.TeardownOpts{
 				Host:           state.ExternalIP,
-				PrivateKeyPath: privKeyPath,
+				PrivateKeyPath: sshKey.PrivatePath,
 				SSHUser:        "serverku",
 				StorageEnabled: cfg.Storage.Enabled,
 				MountPath:      cfg.Storage.MountPath,
@@ -614,13 +667,13 @@ func (o *Orchestrator) Status(ctx context.Context, projectName string, factory P
 	return state, nil
 }
 
-// Destroy permanently deletes all cloud resources and local config for a project.
-// This includes the VM, persistent disk, firewall rules, state file, and config file.
+// Destroy deletes the VM, disks, snapshots, firewall, and generated project SSH identities.
+// Local config, custom/legacy keys, and keys referenced by other projects survive.
 //
 // The operation flow:
 //  1. Down() if running (tear down VM, detach disk)
-//  2. Delete disk if exists
-//  3. Delete local state and config files
+//  2. Delete project snapshots, disks, and firewall rules
+//  3. Delete owned SSH keys and reset runtime state (preserve config)
 func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory ProviderFactory) error {
 	cfg, err := o.store.LoadProject(projectName)
 	if err != nil {
@@ -635,6 +688,10 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 	// Step 0: pre_destroy hook -- runs locally before anything is deleted.
 	if err := o.hooks.Run(ctx, "pre_destroy", cfg.Hooks.PreDestroy, hookWorkDir(cfg), hookEnv(cfg, state.ExternalIP)); err != nil {
 		return fmt.Errorf("pre_destroy hook failed: %w", err)
+	}
+	state.CleanupPending = true
+	if err := o.store.SaveState(state); err != nil {
+		return fmt.Errorf("failed to record pending cleanup: %w", err)
 	}
 
 	// Step 1: If running, bring it down first. Hooks are suppressed here so a
@@ -651,42 +708,106 @@ func (o *Orchestrator) Destroy(ctx context.Context, projectName string, factory 
 		}
 	}
 
-	// Step 2: Delete cloud-side leftovers (disk, firewall rules). The provider
-	// is needed for both; failing to construct it is only fatal when a disk
-	// still has to be deleted.
+	// Discover and delete snapshots before removing their source disks. Keep
+	// runtime state on any cloud cleanup failure so destroy can be retried.
 	cp, cpErr := factory(ctx, cfg)
 	if cpErr != nil {
-		if state.DiskName != "" {
-			return fmt.Errorf("failed to create cloud provider: %w", cpErr)
+		return fmt.Errorf("failed to create cloud provider: %w", cpErr)
+	}
+
+	if err := o.destroySnapshots(ctx, cp, state); err != nil {
+		return err
+	}
+	for len(state.RetainedDisks) > 0 {
+		disk := state.RetainedDisks[0]
+		log.Printf("[orchestrator] deleting retained disk %q", disk.Name)
+		if err := deleteTrackedDisk(ctx, cp, disk.ID, disk.Name); err != nil {
+			return fmt.Errorf("failed to delete retained disk: %w", err)
 		}
-		log.Printf("[orchestrator] warning: could not create provider for firewall cleanup: %v", cpErr)
-	} else {
-		if state.DiskName != "" {
-			log.Printf("[orchestrator] deleting disk %q", state.DiskName)
-			if err := cp.DeleteDisk(ctx, state.DiskName); err != nil {
-				return fmt.Errorf("failed to delete disk: %w", err)
+		state.RetainedDisks = state.RetainedDisks[1:]
+		if err := o.store.SaveState(state); err != nil {
+			return err
+		}
+	}
+	if state.DiskName != "" || state.DiskID != "" {
+		log.Printf("[orchestrator] deleting disk %q", state.DiskName)
+		if err := deleteTrackedDisk(ctx, cp, state.DiskID, state.DiskName); err != nil {
+			return fmt.Errorf("failed to delete disk: %w", err)
+		}
+		state.DiskID, state.DiskName = "", ""
+		if err := o.store.SaveState(state); err != nil {
+			return fmt.Errorf("failed to save disk cleanup state: %w", err)
+		}
+	}
+
+	// A failed firewall deletion is an incomplete destroy, not success.
+	if fw, ok := cp.(provider.FirewallManager); ok {
+		log.Printf("[orchestrator] deleting firewall rules for project %q", projectName)
+		if err := fw.DeleteFirewall(ctx, projectName); err != nil {
+			return fmt.Errorf("failed to delete firewall rules: %w", err)
+		}
+	}
+
+	// Remove only keys generated for this project and account keys we created.
+	// Legacy, custom, externally registered, or still referenced keys survive.
+	pub := state.SSHPublicKey
+	managed := state.SSHKeyManaged
+	if pub == "" {
+		key, keyErr := o.store.ResolveProjectSSHKey(cfg, state, false)
+		if keyErr == nil {
+			pub, managed = key.PublicKey, key.Managed
+		}
+		if keyErr != nil && !errors.Is(keyErr, os.ErrNotExist) {
+			return fmt.Errorf("failed to inspect project SSH key: %w", keyErr)
+		}
+	}
+	inUse := false
+	if managed && pub != "" {
+		inUse, err = o.store.ProjectSSHKeyInUse(projectName, pub)
+		if err != nil {
+			return fmt.Errorf("failed to check SSH key references: %w", err)
+		}
+	}
+	if inUse {
+		log.Printf("[orchestrator] retaining SSH key referenced by another project")
+	} else if managed {
+		if state.SSHKeyOwned {
+			manager, ok := cp.(provider.SSHKeyManager)
+			if !ok {
+				return fmt.Errorf("provider cannot delete the tracked SSH key; ownership state retained")
+			}
+			if err := manager.DeleteSSHKey(ctx, state.SSHKeyID, pub); err != nil {
+				return fmt.Errorf("failed to delete project SSH key: %w", err)
+			}
+			state.SSHKeyOwned, state.SSHKeyID = false, ""
+			if err := o.store.SaveState(state); err != nil {
+				return err
 			}
 		}
-
-		// Firewall cleanup is best-effort: the rule is harmless on its own and
-		// the project is going away either way.
-		if fw, ok := cp.(provider.FirewallManager); ok {
-			log.Printf("[orchestrator] deleting firewall rules for project %q", projectName)
-			if err := fw.DeleteFirewall(ctx, projectName); err != nil {
-				log.Printf("[orchestrator] warning: failed to delete firewall rules (continuing): %v", err)
-			}
+		if err := o.store.DeleteProjectSSHKey(projectName); err != nil {
+			return fmt.Errorf("failed to remove generated SSH key: %w", err)
 		}
+		log.Printf("[orchestrator] removed generated SSH key for project %q", projectName)
 	}
 
-	// Step 3: Delete local state and config
-	if err := o.store.DeleteState(projectName); err != nil {
-		return fmt.Errorf("failed to delete state: %w", err)
+	// Keep a minimal destroyed record so list/status distinguish a completed
+	// destroy from down and a project that has never been started.
+	destroyed := config.NewState(projectName, cfg.Provider, cfg.Region, cfg.Zone)
+	destroyed.Status = config.StatusDestroyed
+	if inUse {
+		// Keep ownership while another project references this key, so cleanup
+		// can be retried after that reference is removed.
+		destroyed.SSHPrivateKeyPath = state.SSHPrivateKeyPath
+		destroyed.SSHPublicKey = state.SSHPublicKey
+		destroyed.SSHKeyManaged = state.SSHKeyManaged
+		destroyed.SSHKeyID = state.SSHKeyID
+		destroyed.SSHKeyOwned = state.SSHKeyOwned
 	}
-	if err := o.store.DeleteProject(projectName); err != nil {
-		return fmt.Errorf("failed to delete project config: %w", err)
+	if err := o.store.SaveState(destroyed); err != nil {
+		return fmt.Errorf("cloud cleanup completed but failed to save destroyed status: %w", err)
 	}
 
-	log.Printf("[orchestrator] project %q destroyed", projectName)
+	log.Printf("[orchestrator] project %q destroyed (config preserved)", projectName)
 
 	// Step 4: post_destroy hook -- best-effort local cleanup after destroy.
 	if err := o.hooks.Run(ctx, "post_destroy", cfg.Hooks.PostDestroy, hookWorkDir(cfg), hookEnv(cfg, "")); err != nil {
@@ -746,6 +867,10 @@ func (o *Orchestrator) Backup(ctx context.Context, projectName, snapshotName str
 		return nil, fmt.Errorf("failed to snapshot disk: %w", err)
 	}
 
+	state.Snapshots = append(state.Snapshots, config.ResourceIdentity{ID: snapshotID, Name: snapshotName})
+	if err := o.store.SaveState(state); err != nil {
+		return nil, fmt.Errorf("snapshot %q created (id: %s) but failed to save backup state: %w", snapshotName, snapshotID, err)
+	}
 	return &BackupResult{
 		SnapshotName: snapshotName,
 		SnapshotID:   snapshotID,
@@ -853,7 +978,11 @@ func (o *Orchestrator) Preflight(ctx context.Context, projectName string, factor
 	}
 
 	// SSH keypair is present (or can be generated).
-	_, _, keyErr := o.store.EnsureSSHKeys()
+	state, stateErr := o.store.LoadState(projectName)
+	keyErr := stateErr
+	if keyErr == nil {
+		_, keyErr = o.store.ResolveProjectSSHKey(cfg, state, true)
+	}
 	add("ssh keys", keyErr, "present")
 
 	// Provider credentials authenticate. Constructing the provider verifies
@@ -948,6 +1077,19 @@ func (o *Orchestrator) Restore(ctx context.Context, projectName, snapshot, newDi
 		return nil, fmt.Errorf("failed to create cloud provider: %w", err)
 	}
 
+	if manager, ok := cp.(provider.SnapshotManager); ok && (state.DiskName != "" || len(state.RetainedDisks) > 0) {
+		snapshots, err := manager.ListProjectSnapshots(ctx, projectSnapshotQuery(state))
+		if err != nil {
+			return nil, fmt.Errorf("failed to discover backups before restore: %w", err)
+		}
+		state.Snapshots = nil
+		for _, snap := range snapshots {
+			state.Snapshots = append(state.Snapshots, config.ResourceIdentity{ID: snap.ID, Name: snap.Name})
+		}
+		if err := o.store.SaveState(state); err != nil {
+			return nil, err
+		}
+	}
 	log.Printf("[orchestrator] restoring snapshot %q into new disk %q", snapshot, newDiskName)
 	disk, err := cp.CreateDiskFromSnapshot(ctx, provider.DiskConfig{
 		Name:      newDiskName,
@@ -968,19 +1110,28 @@ func (o *Orchestrator) Restore(ctx context.Context, projectName, snapshot, newDi
 
 	// Point the project at the restored disk; the next `up` attaches it.
 	oldDisk := state.DiskName
+	oldDiskID := state.DiskID
+	if oldDisk != "" {
+		state.RetainedDisks = append(state.RetainedDisks, config.ResourceIdentity{ID: state.DiskID, Name: oldDisk})
+	}
 	state.DiskName = disk.Name
 	state.DiskID = disk.ID
+	state.Status = config.StatusStopped
 	if err := o.store.SaveState(state); err != nil {
 		return nil, fmt.Errorf("restored disk %q created but failed to save state: %w", disk.Name, err)
 	}
 
 	if deleteOld && oldDisk != "" {
 		log.Printf("[orchestrator] deleting old disk %q", oldDisk)
-		if err := cp.DeleteDisk(ctx, oldDisk); err != nil {
+		if err := deleteTrackedDisk(ctx, cp, oldDiskID, oldDisk); err != nil {
 			// Non-fatal: the restore succeeded; the old disk just lingers.
 			log.Printf("[orchestrator] warning: failed to delete old disk %q (delete it manually): %v", oldDisk, err)
 		} else {
 			result.OldDeleted = true
+			state.RetainedDisks = state.RetainedDisks[:len(state.RetainedDisks)-1]
+			if err := o.store.SaveState(state); err != nil {
+				return nil, fmt.Errorf("failed to save old disk cleanup state: %w", err)
+			}
 		}
 	}
 

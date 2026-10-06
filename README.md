@@ -221,11 +221,11 @@ The interactive wizard creates a config under:
 ~/.serverku/projects/myapp.yaml
 ```
 
-It also ensures the managed SSH keypair exists under:
+It also generates an independent Ed25519 SSH keypair for this project:
 
 ```text
-~/.serverku/keys/serverku_rsa
-~/.serverku/keys/serverku_rsa.pub
+~/.serverku/keys/myapp/id_ed25519
+~/.serverku/keys/myapp/id_ed25519.pub
 ```
 
 For scripting, skip the wizard with `--non-interactive` and pass everything as flags:
@@ -242,10 +242,22 @@ serverku init myapp --non-interactive \
 | `-r, --region` | Cloud region. |
 | `-z, --zone` | Cloud zone (required for GCP). |
 | `-s, --size` | VM machine type (default `e2-medium`). |
+| `--ssh-key` | Existing unencrypted private key; otherwise generate a project key. |
 | `--spot` | Use SPOT/preemptible instances (GCP only; defaults to `true` for GCP and `false` for DigitalOcean, which rejects it). |
 | `--no-storage` | Create a fully stateless project without a persistent disk. |
 | `--storage-gb` | Persistent disk size in GB (default `20`). |
 | `--non-interactive` | Skip the interactive wizard. |
+
+### Edit an existing project
+
+```bash
+serverku edit myapp
+serverku reinit myapp
+```
+
+`edit` uses your editor; `reinit` reruns setup for a project with no tracked VM.
+Both validate changes and keep a backup. See [Editing projects](guides/editing-projects.md)
+for editor selection, scripted updates, resource constraints, and persistence.
 
 ### 3. Configure sync and routing
 
@@ -324,6 +336,11 @@ serverku ssh myapp
 serverku tunnel myapp 5432:5432
 ```
 
+`list` shows storage tracked in local runtime state. After `destroy`, storage
+shows `none` and the cost column shows `-`. The YAML still contains the storage
+settings for your next `up`; `status` labels these as configured and reports
+the actual cloud resources under `Components (live)`.
+
 Changed your code? Push it to the running VM without recreating anything:
 
 ```bash
@@ -340,7 +357,7 @@ is for iterating on it.)
 serverku down myapp
 ```
 
-The VM is destroyed. Persistent storage remains available for the next `serverku up`.
+The VM is destroyed. Persistent storage and snapshots remain available for the next `serverku up`.
 
 ### 7. Delete the project
 
@@ -348,21 +365,29 @@ The VM is destroyed. Persistent storage remains available for the next `serverku
 serverku destroy myapp
 ```
 
-This removes cloud resources and local project state/config. Treat it as irreversible.
+This removes the VM, persistent disks (including old disks retained by restore),
+project snapshots, managed firewall, generated project SSH keys/owned account
+registrations, and resource tracking. A minimal runtime record keeps the status
+as `destroyed`. The project YAML is kept for a future `up`. Data on deleted disks
+and snapshots is permanently lost. Failed cleanup keeps
+runtime state for retry; `status` reports incomplete cleanup, and `up` waits
+until `destroy` succeeds.
 
 ## Commands
 
 | Command | Description |
 | --- | --- |
-| `serverku init <project>` | Create a project config and SSH keys. |
+| `serverku init <project>` | Create a new project config and SSH keys. |
+| `serverku edit <project>` | Edit project YAML in VISUAL/EDITOR or vim/vi; validate and back up before saving. |
+| `serverku reinit <project>` | Rerun setup with current choices prefilled, preserving other settings and runtime state. |
 | `serverku setup <provider>` | Set up and verify cloud credentials (`digitalocean` saves an API token; `gcp` runs an isolated ADC login, lets you pick a project, and verifies it). |
 | `serverku check <project>` | Preflight: validate config, compose file, credentials, DNS — before spending anything. |
 | `serverku up <project>` | Create VM, attach storage, provision, sync, and deploy. |
 | `serverku deploy <project>` | Push code changes to the running VM: re-sync, rewrite compose, `compose up -d`. Same IP, seconds not minutes. |
-| `serverku down <project>` | Destroy VM while preserving persistent storage. Use `-f/--force` to skip the confirmation prompt. |
-| `serverku destroy <project>` | Delete VM, storage, state, and config. Use `-f/--force` to skip the confirmation prompt. |
+| `serverku down <project>` | Destroy VM while preserving persistent disks and snapshots. Use `-f/--force` to skip the confirmation prompt. |
+| `serverku destroy <project>` | Delete VM, disks, snapshots, and managed firewall; record `destroyed` status; keep project YAML. Use `-f/--force` to skip the confirmation prompt. |
 | `serverku status <project>` | Show project status and reconcile with provider. |
-| `serverku list` | List all projects with status and estimated costs. |
+| `serverku list` | List saved projects with locally tracked storage and estimated costs. Use `status <project>` for live resources. |
 | `serverku ssh <project>` | Open an interactive SSH shell. |
 | `serverku open <project> [domain\|service]` | Open the running app in your browser (Caddy domain if set, else `http://<ip>`). `--print` shows the URL only. |
 | `serverku logs <project>` | Stream remote `docker compose logs -f`. |
@@ -371,13 +396,15 @@ This removes cloud resources and local project state/config. Treat it as irrever
 | `serverku restore <project> <snapshot>` | Restore a disk from a snapshot and point the project at it. |
 | `serverku ntfy <project>` | Show how to subscribe to push notifications; `--test` sends a test message. |
 | `serverku notify setup <project>` | Interactive wizard: connect ntfy or Telegram and verify with a real test send. |
+| `serverku notify list <project>` | Show saved channel configuration and heartbeat settings without sending messages. Also available as `serverku notify <project>`. |
 | `serverku notify test <project>` | Send a test notification to every configured channel. |
 
 Global flags:
 
 ```bash
 --config-dir string   config directory (default: ~/.serverku/)
--v, --verbose         enable verbose output
+-v, --verbose         enable verbose output and cloud API logs
+--debug               show cloud API logs (overrides config.yaml debug setting)
 --version             print version
 ```
 
@@ -555,6 +582,9 @@ Notes:
   `--name`.
 - Snapshots are crash-consistent (taken live); for application-consistent backups,
   quiesce or stop the workload first (e.g. `serverku down`, then `backup`).
+- `down` preserves disks and snapshots. `destroy` permanently deletes both,
+  including backups with custom names and tracked old disks retained by restore.
+  Keep an external backup if you need recovery after destroy.
 - The project must have `storage.enabled` and an existing disk (run `serverku up`
   at least once).
 
@@ -614,6 +644,7 @@ machine** before saving anything:
 
 ```bash
 serverku notify setup myapp   # pick ntfy or Telegram, connect, test, confirm
+serverku notify list myapp    # inspect which channels are configured (no messages sent)
 serverku notify test myapp    # re-send a test to every configured channel
 ```
 

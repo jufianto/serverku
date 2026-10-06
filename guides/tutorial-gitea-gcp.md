@@ -176,18 +176,18 @@ perfectly clean copy of the SQLite DB, snapshot while down:
 serverku down gitea && serverku backup gitea --name weekly
 ```
 
-Snapshots live in GCP independently of the disk. Even after
-`serverku destroy`, you can create a new disk from a snapshot in the
-console and rebuild.
+Use `serverku down` to retain disks and snapshots. `serverku destroy`
+permanently deletes the project disks and their snapshots. To restore while
+stopped, run `serverku restore gitea weekly`, then `serverku up gitea`.
 
 ## Step 7 — Down / destroy
 
 ```bash
 serverku down gitea      # instance gone, disk + firewall rule stay (~$0.40/mo)
-serverku destroy gitea   # instance + disk + firewall rule + local config gone
+serverku destroy gitea   # instance + disks + snapshots + firewall gone; YAML kept
 ```
 
-Snapshots are the only thing `destroy` leaves behind.
+`destroy` also deletes project snapshots. Use `down` to retain your data.
 
 ## What you learned
 
@@ -196,7 +196,7 @@ Snapshots are the only thing `destroy` leaves behind.
   on the allowed ports (`80`, `443`, `8080`, `9000-9999`).
 - `spot: true` + persistent disk + `status` reconciliation = very cheap,
   slightly interruptible infrastructure.
-- Snapshots are cheap insurance that outlive even `destroy`.
+- Snapshots provide a recovery point while retained; `destroy` deletes them.
 
 ---
 

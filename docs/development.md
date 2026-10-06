@@ -26,7 +26,53 @@ tmpdir="$(mktemp -d)"
 ./serverku --config-dir "$tmpdir" list
 ```
 
+## Cloud action logs
+
+Detailed cloud API logs are hidden by default for DigitalOcean and GCP. Enable
+reads, writes, polling, HTTP results, and request duration for one command:
+
+```bash
+serverku status kuma --debug
+```
+
+To enable them persistently, set `debug: true` in `~/.serverku/config.yaml`
+(or `<config-dir>/config.yaml` when using `--config-dir`). A missing file or
+`debug: false` keeps them hidden. `--verbose` also enables API logs, and an
+explicit `--debug=false` overrides the file and `--verbose`.
+
+Fresh VMs can become active before SSH accepts connections. During `up` and
+`deploy`, Serverku shows a waiting message and confirms when SSH connects.
+Individual connection retries are diagnostics shown only when debug is enabled;
+the final timeout or connection failure remains visible in normal output.
+
+Each new project uses its own generated SSH key. DigitalOcean registers it as
+`serverku-<project>`; `status` finds it by fingerprint. `down` retains keys and
+`destroy` removes generated local keys and account keys created by that project.
+Custom, legacy shared, externally registered, and still-referenced keys are
+retained. A failed key lookup shows `unknown`; `none` means the key was confirmed
+unregistered. See [Project SSH keys](../guides/project-ssh-keys.md).
+
+Normal status output, progress messages, warnings, and errors stay visible. Lifecycle
+and provisioning messages explain actions such as reusing/registering an SSH
+key, injecting it into a VM, creating storage, transferring Compose, and starting
+containers. Request headers, query strings, and bodies are excluded from API
+logs. Remote command output can still contain application-specific information.
+
+Logs are terminal output, not a persistent audit file. To save a run:
+
+```bash
+serverku up kuma --debug 2>&1 | tee serverku-kuma.log
+```
+
+On provisioning failure, serverku attempts to delete the VM and preserves any
+persistent disk. Successful cleanup clears the saved VM ID, name, and IP while
+retaining the failure reason. Failed cleanup reports the deletion error and
+keeps the VM tracked for inspection.
+
 ## What is covered offline
+
+For a local GCP emulator setup and its current coverage limits, see
+[`floci-gcp.md`](floci-gcp.md).
 
 The test suite runs entirely without cloud credentials:
 

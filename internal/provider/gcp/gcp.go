@@ -8,10 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jufianto/serverku/internal/cloudlog"
 	"github.com/jufianto/serverku/internal/provider"
 	"google.golang.org/api/cloudbilling/v1"
 	"google.golang.org/api/compute/v1"
 	dns "google.golang.org/api/dns/v1"
+	"google.golang.org/api/option"
+	htransport "google.golang.org/api/transport/http"
 )
 
 const (
@@ -40,19 +43,28 @@ type GCPProvider struct {
 // New creates a new GCPProvider using Application Default Credentials.
 // The projectID and zone are used as defaults for all operations.
 func New(ctx context.Context, projectID string, zone string) (*GCPProvider, error) {
-	svc, err := compute.NewService(ctx)
+	// Use an ADC-authenticated client shared by all cloud services. The
+	// cloud-platform scope covers Compute, DNS and Billing; IAM still controls
+	// the account's permissions. Wrap outside authentication so credentials
+	// and token refresh traffic are never included in action logs.
+	client, _, err := htransport.NewClient(ctx, option.WithScopes(compute.CloudPlatformScope))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCP HTTP client: %w", err)
+	}
+	client.Transport = &cloudlog.Transport{Provider: "gcp", Base: client.Transport}
+	svc, err := compute.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCP compute service: %w", err)
 	}
 
-	dnsSvc, err := dns.NewService(ctx)
+	dnsSvc, err := dns.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCP DNS service: %w", err)
 	}
 
 	// Billing catalog access is optional: without it, live pricing lookups
 	// fail and callers fall back to labeled offline estimates.
-	billingSvc, err := cloudbilling.NewService(ctx)
+	billingSvc, err := cloudbilling.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
 		log.Printf("[gcp] cloud billing service unavailable (cost figures will be offline estimates): %v", err)
 		billingSvc = nil
@@ -197,6 +209,9 @@ func (g *GCPProvider) CreateVM(ctx context.Context, config provider.VMConfig) (*
 		},
 	}
 
+	if config.SSHPubKey != "" {
+		log.Printf("[gcp] injecting SSH public key for serverku user via instance metadata")
+	}
 	log.Printf("[gcp] creating VM %q in zone %s (type: %s, spot: %v)", config.Name, zone, config.MachineType, config.Spot)
 
 	op, err := g.service.Instances.Insert(projectID, zone, instance).Context(ctx).Do()
@@ -603,4 +618,58 @@ func (g *GCPProvider) ValidateCredentials(ctx context.Context) error {
 		return fmt.Errorf("gcp credentials check failed: %w", err)
 	}
 	return nil
+}
+
+// ListComponents reports the live state of the GCP resources serverku manages
+// for a project: the instance, disk and firewall rule (all removed by destroy),
+// plus any disk snapshots (removed by destroy). The SSH key rides
+// in instance metadata and dies with the VM, so it is not a separate resource.
+func (g *GCPProvider) ListComponents(ctx context.Context, q provider.ComponentQuery) ([]provider.Component, error) {
+	var comps []provider.Component
+
+	// VM instance.
+	vmPresent := false
+	if _, err := g.service.Instances.Get(g.projectID, g.zone, q.VMName).Context(ctx).Do(); err == nil {
+		vmPresent = true
+	}
+	comps = append(comps, provider.Component{Kind: "VM", Name: q.VMName, Present: vmPresent, RemovedByDestroy: true})
+
+	// Persistent disk.
+	if q.DiskName != "" {
+		present, detail := false, ""
+		if d, err := g.service.Disks.Get(g.projectID, g.zone, q.DiskName).Context(ctx).Do(); err == nil {
+			present = true
+			detail = fmt.Sprintf("%dGB", d.SizeGb)
+		}
+		comps = append(comps, provider.Component{Kind: "Volume", Name: q.DiskName, Detail: detail, Present: present, RemovedByDestroy: true})
+	}
+
+	for _, disk := range q.RetainedDisks {
+		_, err := g.service.Disks.Get(g.projectID, g.zone, disk.Name).Context(ctx).Do()
+		comps = append(comps, provider.Component{Kind: "Volume", Name: disk.Name, Detail: "retained after restore", Present: err == nil, LookupFailed: err != nil && !isNotFoundErr(err), RemovedByDestroy: true})
+	}
+
+	// Firewall rule.
+	fwName := fmt.Sprintf("serverku-%s-fw", q.ProjectName)
+	fwPresent := false
+	if _, err := g.service.Firewalls.Get(g.projectID, fwName).Context(ctx).Do(); err == nil {
+		fwPresent = true
+	}
+	comps = append(comps, provider.Component{Kind: "Firewall", Name: fwName, Present: fwPresent, RemovedByDestroy: true})
+
+	// Snapshots belong to the project's source disks or recorded backups.
+	disks := append([]provider.DiskIdentity{}, q.RetainedDisks...)
+	if q.DiskName != "" || q.DiskID != "" {
+		disks = append(disks, provider.DiskIdentity{ID: q.DiskID, Name: q.DiskName})
+	}
+	if len(disks) > 0 || len(q.Snapshots) > 0 {
+		snaps, err := g.ListProjectSnapshots(ctx, provider.SnapshotQuery{Disks: disks, Tracked: q.Snapshots})
+		detail := fmt.Sprintf("%d found", len(snaps))
+		if err != nil {
+			detail = "snapshot lookup failed"
+		}
+		comps = append(comps, provider.Component{Kind: "Snapshot", Detail: detail, Present: len(snaps) > 0, RemovedByDestroy: true, LookupFailed: err != nil})
+	}
+
+	return comps, nil
 }

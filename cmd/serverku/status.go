@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -9,15 +10,22 @@ import (
 	"github.com/jufianto/serverku/internal/config"
 	"github.com/jufianto/serverku/internal/orchestrator"
 	"github.com/jufianto/serverku/internal/pricing"
+	"github.com/jufianto/serverku/internal/provider"
 	"github.com/jufianto/serverku/internal/provisioner"
 	"github.com/spf13/cobra"
 )
 
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status <project-name>",
-		Short: "Show the current status of a project",
-		Args:  cobra.ExactArgs(1),
+		Use:     "status <project-name>",
+		Short:   "Show the current status of a project",
+		Example: "  serverku status kuma\n  serverku list",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return fmt.Errorf("provide exactly one project name\nUsage: %s\nExample: serverku status kuma\nRun 'serverku list' to find your project name", cmd.UseLine())
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
@@ -39,6 +47,10 @@ func newStatusCmd() *cobra.Command {
 			rates := newRateCache(factory)
 			printProjectStatus(cfg, state, rates.resolveRate(cmd.Context(), cfg))
 
+			// Live inventory of the cloud resources serverku manages for this
+			// project, so it's clear what exists and what destroy leaves behind.
+			printComponents(cmd.Context(), cfg, state, factory)
+
 			// Real account-level month-to-date usage, when the provider's API
 			// reports it (currently DigitalOcean).
 			if usd, ok := rates.monthToDateUsage(cmd.Context(), cfg); ok {
@@ -53,6 +65,7 @@ func newListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List all projects and their status",
+		Long:  "List saved projects with locally tracked storage and estimated costs.\nRun 'serverku status <project>' to check live cloud resources.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			names, err := store.ListProjects()
@@ -89,15 +102,23 @@ func newListCmd() *cobra.Command {
 					ip = state.ExternalIP
 				}
 
-				storage := "disabled"
-				if cfg.Storage.Enabled {
-					storage = fmt.Sprintf("%dGB", cfg.Storage.SizeGB)
+				// Config describes what the next up should create. Only a
+				// tracked disk belongs in the current storage/cost columns.
+				hasDisk := state.DiskID != "" || state.DiskName != ""
+				storage := "none"
+				if hasDisk {
+					storage = fmt.Sprintf("%dGB (tracked)", cfg.Storage.SizeGB)
 				}
 
 				// Running projects show accrued session cost at the best
 				// available rate (live API price, or table estimate marked
 				// est.); stopped projects show the storage-only estimate.
-				cost := pricing.FormatListEstimate(pricing.EstimateCost(cfg), state.IsRunning())
+				estimateCfg := *cfg
+				estimateCfg.Storage.Enabled = hasDisk
+				cost := "-"
+				if state.IsRunning() || hasDisk {
+					cost = pricing.FormatListEstimate(pricing.EstimateCost(&estimateCfg), state.IsRunning())
+				}
 				if state.IsRunning() && state.StartedAt != nil {
 					rate := rates.resolveRate(cmd.Context(), cfg)
 					if rate.Known {
@@ -121,15 +142,22 @@ func printProjectStatus(cfg *config.ProjectConfig, state *config.ProjectState, r
 		fmt.Printf("Zone:      %s\n", cfg.Zone)
 	}
 	fmt.Printf("VM Size:   %s\n", cfg.VM.Size)
-	fmt.Printf("Spot:      %v\n", cfg.VM.Spot)
+	// Spot is a GCP-only concept; DigitalOcean has no equivalent, so don't
+	// show a misleading "Spot: false" for providers that don't support it.
+	if providerSupportsSpot(cfg.Provider) {
+		fmt.Printf("Spot:      %v\n", cfg.VM.Spot)
+	}
 	fmt.Printf("Storage:   ")
 	if cfg.Storage.Enabled {
-		fmt.Printf("%dGB at %s\n", cfg.Storage.SizeGB, cfg.Storage.MountPath)
+		fmt.Printf("%dGB at %s (configured)\n", cfg.Storage.SizeGB, cfg.Storage.MountPath)
 	} else {
 		fmt.Println("disabled (stateless)")
 	}
 	fmt.Println()
 	fmt.Printf("Status:    %s\n", state.Status)
+	if state.CleanupPending {
+		fmt.Printf("Cleanup:   incomplete; retry serverku destroy %s\n", cfg.Name)
+	}
 
 	if state.ExternalIP != "" {
 		fmt.Printf("IP:        %s\n", state.ExternalIP)
@@ -153,5 +181,101 @@ func printProjectStatus(cfg *config.ProjectConfig, state *config.ProjectState, r
 	}
 	if state.ErrorMsg != "" {
 		fmt.Printf("Error:     %s\n", state.ErrorMsg)
+	}
+}
+
+// printComponents shows a live inventory of the cloud resources serverku
+// manages for the project, flagging any that `serverku destroy` does not remove
+// (orphans the user must clean up manually). It is best-effort: if the provider
+// can't be built or doesn't support the ComponentLister capability, it prints
+// nothing rather than failing the status command.
+func printComponents(ctx context.Context, cfg *config.ProjectConfig, state *config.ProjectState, factory orchestrator.ProviderFactory) {
+	cp, err := factory(ctx, cfg)
+	if err != nil {
+		return
+	}
+	lister, ok := cp.(provider.ComponentLister)
+	if !ok {
+		return
+	}
+
+	// Derive resource names from state when available, else from the naming
+	// convention, so the inventory works even before/after the VM exists.
+	vmName := state.VMName
+	if vmName == "" {
+		vmName = "serverku-" + cfg.Name
+	}
+	diskName := state.DiskName
+	if diskName == "" && cfg.Storage.Enabled {
+		diskName = "serverku-" + cfg.Name + "-data"
+	}
+
+	pubKey := state.SSHPublicKey
+	if pubKey == "" {
+		if key, keyErr := store.ResolveProjectSSHKey(cfg, state, false); keyErr == nil {
+			pubKey = key.PublicKey
+		}
+	}
+	keyOwned := state.SSHKeyOwned && state.SSHKeyManaged
+	if keyOwned && pubKey != "" {
+		if used, keyErr := store.ProjectSSHKeyInUse(cfg.Name, pubKey); keyErr == nil && used {
+			keyOwned = false
+		}
+	}
+	var snapshots []provider.Snapshot
+	for _, snap := range state.Snapshots {
+		snapshots = append(snapshots, provider.Snapshot{ID: snap.ID, Name: snap.Name})
+	}
+	var retained []provider.DiskIdentity
+	for _, disk := range state.RetainedDisks {
+		retained = append(retained, provider.DiskIdentity{ID: disk.ID, Name: disk.Name})
+	}
+	comps, err := lister.ListComponents(ctx, provider.ComponentQuery{
+		ProjectName: cfg.Name,
+		VMName:      vmName,
+		DiskName:    diskName,
+		SSHPubKey:   pubKey,
+		SSHKeyOwned: keyOwned,
+		DiskID:      state.DiskID, Snapshots: snapshots, RetainedDisks: retained,
+	})
+	if err != nil || len(comps) == 0 {
+		return
+	}
+
+	fmt.Println("\nComponents (live):")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	orphans := 0
+	for _, c := range comps {
+		name := c.Name
+		if c.Detail != "" {
+			if name != "" {
+				name += "  "
+			}
+			name += "(" + c.Detail + ")"
+		}
+		if name == "" {
+			name = "-"
+		}
+
+		var st string
+		switch {
+		case c.LookupFailed:
+			st = "unknown"
+		case c.Present && c.Shared:
+			st = "present  shared (retained by destroy)"
+		case c.Present && !c.RemovedByDestroy:
+			st = "present  ⚠ orphan (destroy won't remove)"
+			orphans++
+		case c.Present:
+			st = "present"
+		default:
+			st = "none"
+		}
+		fmt.Fprintf(w, "  %s\t%s\t%s\n", c.Kind, name, st)
+	}
+	_ = w.Flush()
+
+	if orphans > 0 {
+		fmt.Printf("\n  ⚠ %d component(s) are NOT removed by `serverku destroy` -- delete manually.\n", orphans)
 	}
 }

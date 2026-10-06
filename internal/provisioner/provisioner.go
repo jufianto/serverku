@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"strings"
 
 	"github.com/jufianto/serverku/internal/config"
 )
@@ -62,12 +63,17 @@ type ProvisionOpts struct {
 	// SSHUser is the username to connect with (e.g., "serverku" for GCP).
 	SSHUser string
 
+	// Provider is the cloud provider name ("gcp" or "digitalocean"). It selects
+	// the stable /dev/disk/by-id device path for the attached volume, which
+	// differs per provider. Only relevant when StorageEnabled is true.
+	Provider string
+
 	// StorageEnabled indicates whether a persistent disk should be mounted.
 	StorageEnabled bool
 
-	// DiskName is the GCP disk resource name (e.g., "serverku-myproject-data").
-	// Used to construct the stable device path /dev/disk/by-id/google-<DiskName>.
-	// Only relevant when StorageEnabled is true.
+	// DiskName is the disk/volume resource name (e.g., "serverku-myproject-data").
+	// Used to construct the stable device path (see diskDevicePath) for the
+	// selected Provider. Only relevant when StorageEnabled is true.
 	DiskName string
 
 	// MountPath is the path inside the VM to mount the persistent disk
@@ -176,13 +182,14 @@ type SSHProvisioner struct{}
 //  4. Transfer and start docker-compose (if compose content provided)
 //  5. Run startup commands
 func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) error {
-	log.Printf("[provisioner] connecting to %s as %s...", opts.Host, opts.SSHUser)
+	log.Printf("[provisioner] waiting for SSH on %s as %s (up to 5 minutes)...", opts.Host, opts.SSHUser)
 
 	client, err := connectSSHWithRetry(ctx, opts.Host, opts.PrivateKeyPath, opts.SSHUser)
 	if err != nil {
 		return fmt.Errorf("failed to connect to VM via SSH: %w", err)
 	}
 	defer client.Close()
+	log.Printf("[provisioner] SSH connection established")
 
 	log.Printf("[provisioner] installing Docker...")
 	if out, err := runCommand(client, installDockerScript); err != nil {
@@ -193,7 +200,7 @@ func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) erro
 
 	if opts.StorageEnabled {
 		log.Printf("[provisioner] mounting disk %q at %s...", opts.DiskName, opts.MountPath)
-		script := mountDiskScript(opts.DiskName, opts.MountPath)
+		script := mountDiskScript(opts.Provider, opts.DiskName, opts.MountPath)
 		if out, err := runCommand(client, script); err != nil {
 			log.Printf("[provisioner] disk mount output:\n%s", out)
 			return fmt.Errorf("failed to mount disk: %w", err)
@@ -250,8 +257,7 @@ func (p *SSHProvisioner) Provision(ctx context.Context, opts ProvisionOpts) erro
 
 	if opts.ComposeContent != "" || opts.SyncDir != "" {
 		log.Printf("[provisioner] running docker compose up -d...")
-		if out, err := runCommand(client, composeUpScript(composeDir)); err != nil {
-			log.Printf("[provisioner] docker compose up output:\n%s", out)
+		if _, err := runCommand(client, composeUpScript(composeDir)); err != nil {
 			return fmt.Errorf("failed to start containers: %w", err)
 		}
 		log.Printf("[provisioner] containers started")
@@ -320,7 +326,9 @@ func rsyncDir(ctx context.Context, syncDir, privateKeyPath, sshUser, host, destD
 		return fmt.Errorf("rsync not found in PATH. Please install rsync for directory synchronization: %w", err)
 	}
 
-	sshOpts := fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR", privateKeyPath)
+	// rsync parses the -e string itself: quote the identity path so custom keys
+	// containing spaces or quotes stay one argument.
+	sshOpts := fmt.Sprintf("ssh -i '%s' -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR", strings.ReplaceAll(privateKeyPath, "'", "''"))
 	dest := fmt.Sprintf("%s@%s:%s/", sshUser, host, destDir)
 
 	rsyncCmd := exec.CommandContext(ctx, rsyncBin,
@@ -347,13 +355,14 @@ func rsyncDir(ctx context.Context, syncDir, privateKeyPath, sshUser, host, destD
 // so changed services are recreated. Docker, the mounted disk, and Caddyku
 // routing from the original Provision are reused untouched.
 func (p *SSHProvisioner) Deploy(ctx context.Context, opts DeployOpts) error {
-	log.Printf("[provisioner] deploy: connecting to %s as %s...", opts.Host, opts.SSHUser)
+	log.Printf("[provisioner] deploy: waiting for SSH on %s as %s (up to 5 minutes)...", opts.Host, opts.SSHUser)
 
 	client, err := connectSSHWithRetry(ctx, opts.Host, opts.PrivateKeyPath, opts.SSHUser)
 	if err != nil {
 		return fmt.Errorf("failed to connect to VM via SSH: %w", err)
 	}
 	defer client.Close()
+	log.Printf("[provisioner] deploy: SSH connection established")
 
 	composeDir := "/home/" + opts.SSHUser
 	if opts.StorageEnabled && opts.MountPath != "" {
@@ -375,8 +384,7 @@ func (p *SSHProvisioner) Deploy(ctx context.Context, opts DeployOpts) error {
 	}
 
 	log.Printf("[provisioner] deploy: running docker compose up -d...")
-	if out, err := runCommand(client, composeUpScript(composeDir)); err != nil {
-		log.Printf("[provisioner] docker compose up output:\n%s", out)
+	if _, err := runCommand(client, composeUpScript(composeDir)); err != nil {
 		return fmt.Errorf("failed to restart containers: %w", err)
 	}
 

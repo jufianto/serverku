@@ -215,7 +215,7 @@ func (s *Store) ListProjects() ([]string, error) {
 			continue
 		}
 		name := entry.Name()
-		if strings.HasSuffix(name, ".yaml") {
+		if !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".yaml") {
 			names = append(names, strings.TrimSuffix(name, ".yaml"))
 		}
 	}

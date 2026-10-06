@@ -15,6 +15,9 @@ over?"
 > `serverku status <project>` and `serverku list`, which use each provider's
 > live pricing API.
 
+Already have a project? Use `serverku reinit <project>` to revisit the setup
+choices, or `serverku edit <project>` for YAML editing. See [Editing projects](editing-projects.md).
+
 ## 1. Provider — GCP or DigitalOcean?
 
 Both are fully supported. Pick based on what you need:

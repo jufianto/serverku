@@ -22,6 +22,13 @@ import (
 
 // newProviderFactory returns a ProviderFactory that creates the appropriate
 // cloud provider based on the project config.
+// providerSupportsSpot reports whether the provider offers spot/preemptible
+// VMs. Only GCP does; DigitalOcean has no equivalent (spot: true is rejected at
+// config validation), so spot is omitted from user-facing output for it.
+func providerSupportsSpot(provider string) bool {
+	return provider == "gcp"
+}
+
 func newProviderFactory() orchestrator.ProviderFactory {
 	return func(ctx context.Context, cfg *config.ProjectConfig) (provider.CloudProvider, error) {
 		switch cfg.Provider {
@@ -117,7 +124,11 @@ the external IP shown on completion.`,
 			fmt.Printf("Starting project %q...\n", name)
 			fmt.Printf("  Provider: %s\n", cfg.Provider)
 			fmt.Printf("  Region:   %s / %s\n", cfg.Region, cfg.Zone)
-			fmt.Printf("  VM:       %s (spot: %v)\n", cfg.VM.Size, cfg.VM.Spot)
+			if providerSupportsSpot(cfg.Provider) {
+				fmt.Printf("  VM:       %s (spot: %v)\n", cfg.VM.Size, cfg.VM.Spot)
+			} else {
+				fmt.Printf("  VM:       %s\n", cfg.VM.Size)
+			}
 			if cfg.Storage.Enabled {
 				fmt.Printf("  Storage:  %dGB at %s\n", cfg.Storage.SizeGB, cfg.Storage.MountPath)
 			}
@@ -192,7 +203,7 @@ func newDownCmd() *cobra.Command {
 		Use:   "down <project-name>",
 		Short: "Tear down a project's VM, keep persistent storage",
 		Long: `Stop containers, detach persistent storage, and destroy the VM.
-Your data on the persistent disk is preserved for the next 'serverku up'.`,
+Your persistent disks and snapshots are preserved for the next 'serverku up'.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -240,9 +251,15 @@ func newDestroyCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "destroy <project-name>",
-		Short: "Permanently delete a project and all its resources",
-		Long: `Destroy everything: VM, persistent storage, and project configuration.
-This action is irreversible - all data will be permanently lost.`,
+		Short: "Permanently delete a project's cloud resources (keeps local config)",
+		Long: `Destroy the cloud resources: VM, persistent disks, snapshots, and firewall.
+This is irreversible - all data on the VM, storage, and snapshots is permanently lost.
+
+Generated project SSH keys and account registrations owned by this project
+are removed. Custom, legacy shared, and still-referenced keys are retained.
+
+The local project configuration is kept, so you can bring the project back
+later with 'serverku up'. Delete the config file yourself if you want it gone.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -253,8 +270,8 @@ This action is irreversible - all data will be permanently lost.`,
 			}
 
 			if !force {
-				fmt.Printf("WARNING: This will permanently delete ALL resources for project %q.\n", name)
-				fmt.Printf("This includes the VM, persistent storage, and all data.\n")
+				fmt.Printf("WARNING: This will permanently delete the cloud resources for project %q.\n", name)
+				fmt.Printf("This includes the VM, persistent disks, snapshots, and all data (the local config is kept).\n")
 				fmt.Printf("Type the project name to confirm: ")
 				var confirm string
 				_, _ = fmt.Scanln(&confirm)
@@ -275,7 +292,7 @@ This action is irreversible - all data will be permanently lost.`,
 				return fmt.Errorf("failed to destroy project: %w", err)
 			}
 
-			fmt.Printf("Project %q destroyed. All resources have been permanently deleted.\n", name)
+			fmt.Printf("Project %q destroyed. VM/storage/snapshot cleanup complete; local config kept (recreate with `serverku up %s`).\n", name, name)
 
 			return nil
 		},

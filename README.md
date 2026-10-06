@@ -395,6 +395,7 @@ until `destroy` succeeds.
 | `serverku restore <project> <snapshot>` | Restore a disk from a snapshot and point the project at it. |
 | `serverku ntfy <project>` | Show how to subscribe to push notifications; `--test` sends a test message. |
 | `serverku notify setup <project>` | Interactive wizard: connect ntfy or Telegram and verify with a real test send. |
+| `serverku notify list <project>` | Show saved channel configuration and heartbeat settings without sending messages. Also available as `serverku notify <project>`. |
 | `serverku notify test <project>` | Send a test notification to every configured channel. |
 
 Global flags:
@@ -642,6 +643,7 @@ machine** before saving anything:
 
 ```bash
 serverku notify setup myapp   # pick ntfy or Telegram, connect, test, confirm
+serverku notify list myapp    # inspect which channels are configured (no messages sent)
 serverku notify test myapp    # re-send a test to every configured channel
 ```
 

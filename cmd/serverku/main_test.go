@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/jufianto/serverku/internal/config"
@@ -326,6 +327,77 @@ func TestNtfyShowsSubscribeInstructions(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("ntfy output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestNotifyListShowsSavedChannelsWithoutSendingOrExposingSecrets(t *testing.T) {
+	dir := t.TempDir()
+	if _, errOut, err := initDO(t, dir, "demo"); err != nil {
+		t.Fatalf("init: %v, %s", err, errOut)
+	}
+	var sends atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { sends.Add(1) }))
+	t.Cleanup(srv.Close)
+	st, err := config.NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := st.LoadProject("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Notifications.Ntfy.Server = srv.URL
+	cfg.Notifications.Ntfy.Topic = "private-topic"
+	cfg.Notifications.Ntfy.HeartbeatHours = 6
+	cfg.Notifications.Telegram.BotToken = "private-bot-token"
+	cfg.Notifications.Telegram.ChatID = "private-chat-id"
+	cfg.Notifications.Slack.WebhookURL = srv.URL + "/private-webhook"
+	if err := st.SaveProject(cfg); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(st.ProjectsDir(), "demo.yaml")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"notify", "list", "demo"}, {"notify", "demo"}} {
+		out, errOut, err := runCLI(t, append([]string{"--config-dir", dir}, args...)...)
+		if err != nil {
+			t.Fatalf("list: %v, %s", err, errOut)
+		}
+		normalized := strings.Join(strings.Fields(out), " ")
+		for _, want := range []string{"ntfy configured every 6h (configured)", "telegram configured off", "slack configured -", "notify test demo"} {
+			if !strings.Contains(normalized, want) {
+				t.Fatalf("missing %q: %s", want, out)
+			}
+		}
+		for _, secret := range []string{"private-topic", "private-bot-token", "private-chat-id", "private-webhook"} {
+			if strings.Contains(out, secret) {
+				t.Fatal("notification inventory exposed a secret")
+			}
+		}
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sends.Load() != 0 || !bytes.Equal(before, after) {
+		t.Fatal("listing must not send notifications or change settings")
+	}
+	cfg.Notifications = config.NotificationsConfig{}
+	cfg.Notifications.Telegram.BotToken = "private-bot-token"
+	if err := st.SaveProject(cfg); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, err := runCLI(t, "--config-dir", dir, "notify", "list", "demo")
+	if err != nil {
+		t.Fatalf("list incomplete: %v, %s", err, errOut)
+	}
+	normalized := strings.Join(strings.Fields(out), " ")
+	for _, want := range []string{"ntfy not configured off", "telegram incomplete: missing chat_id off", "slack not configured -"} {
+		if !strings.Contains(normalized, want) {
+			t.Fatalf("missing %q: %s", want, out)
 		}
 	}
 }

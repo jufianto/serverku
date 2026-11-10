@@ -15,6 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Brand palette, integrity and mutation checks
+        run: make brand-check
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:

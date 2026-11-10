@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-10",
+  "sha256": "cd8929419ae17d32ebfe1ebd48014f61e9876885c0401bc1ea42c67ebb846454",
+  "pages_reviewed": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "method": "All seven pages rendered with Poppler, scale-to 1250, and visually inspected for clipping, overlap, contrast and layout.",
+  "artwork_review": "Approved geometry and palette retained; approval labels, placed-image scope and current-master lifecycle claims reviewed."
+}

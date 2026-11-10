@@ -1,14 +1,14 @@
-# serverku brand information
+# ${name} brand information
 
-Working proposal as of 2026-11-10. Product facts follow the repository README and lifecycle command descriptions; visual choices are new proposals based on the owner-selected server + power direction.
+Approved identity as of 2026-11-10. Graphical brand materials follow the repository brand reference. Product context is read from the current repository during each build.
 
 ## Name and positioning
 
-**Name:** `serverku`, lowercase, matching the CLI and repository. Use code formatting for commands and plain lowercase for the product name.
+**Name:** `${name}`, lowercase, matching the CLI and repository. Use code formatting for commands and plain lowercase for the product name.
 
 **Short description:** An on-demand cloud VM orchestrator for Docker Compose projects.
 
-**One sentence:** serverku creates cloud VMs for your Compose projects when you need them, and can retain configured persistent storage when the runtime is removed.
+**One sentence:** ${name} creates cloud VMs for your Compose projects when you need them, and can retain configured persistent storage when the runtime is removed.
 
 **Audience:** developers operating side projects, previews, staging environments, demos and internal tools that do not need compute running 24/7.
 
@@ -20,9 +20,9 @@ These lines are new suggestions, not historical approved taglines. Neither line 
 
 ## Product truths
 
-- `serverku up <project>` creates a VM, attaches configured storage, provisions Docker, syncs the project and starts its Compose stack.
-- `serverku down <project>` tears down the VM while retaining configured persistent storage. This is deletion of compute, not simply pausing a VM.
-- `serverku destroy <project>` removes cloud resources, including persistent disks and snapshots. Do not promise retention after destroy.
+- `${name} up <project>` creates a VM, attaches configured storage, provisions Docker, syncs the project and starts its Compose stack.
+- `${name} down <project>` tears down the VM while retaining configured persistent storage. This is deletion of compute, not simply pausing a VM.
+- `${name} destroy <project>` deletes the tracked persistent disk and local project configuration. Do not promise retention after destroy or automatic cleanup of snapshots and old restored disks on this branch.
 - Only data placed on the configured persistent volume should be described as surviving down. Data written solely to ephemeral VM storage is different.
 - Both GCP and DigitalOcean are implemented. Existing Compose projects, SSH/rsync, snapshots, optional DNS and Caddyku routing support the workflow.
 - Retained storage and other provider resources may still incur charges. Price estimates are not bills; no fixed savings percentage or "zero cost while stopped" claim is justified.
@@ -36,18 +36,18 @@ The two-color primary uses deep teal for compute and active teal for storage. On
 
 The **micro variant** widens the power ring and stem and replaces the base's indicator/slot pair with one larger slot. It retains the chassis and storage gap. This is a deliberate small-size design, not a resized screenshot.
 
-All delivered symbols are original hand-authored vector proposals using exact circular arcs and rounded rectangles. Negative space uses even-odd compound paths; there are no raster images, masks or tracing artifacts. No claim of similarity to an existing approved logo is made.
+All delivered symbols are original hand-authored vectors using exact circular arcs and rounded rectangles. Negative space uses even-odd compound paths; there are no raster images, masks or tracing artifacts. No claim of similarity to an existing approved logo is made.
 
-## Proposed visual system
+## Approved visual system
 
 | Token | Hex | Role |
 |---|---|---|
-| Deep Teal | `#173D42` | Compute chassis, lettering and main one-color ink |
-| Active Teal | `#0D9488` | Persistent storage base and optional digital accent |
-| White | `#FFFFFF` | Light background and reverse artwork |
-| Black | `#000000` | Strict one-color reproduction |
+| Deep Teal | `${ink}` | Compute chassis, lettering and main one-color ink |
+| Active Teal | `${accent}` | Persistent storage base and optional digital accent |
+| White | `${white}` | Light background and reverse artwork |
+| Black | `${black}` | Strict one-color reproduction |
 
-These are proposed brand colors. No established application palette or fixed terminal theme is being replaced. The static identity must not be presented as a live power/status control.
+These are approved brand colors. No established application palette or fixed terminal theme is being replaced. The static identity must not be presented as a live power/status control.
 
 **Wordmark:** Sora Semibold (600), lowercase, delivered as outlines.
 
@@ -55,7 +55,7 @@ These are proposed brand colors. No established application palette or fixed ter
 
 Both font families and their SIL Open Font License texts are bundled. These fonts do not change the user's terminal font or the CLI's output.
 
-## Proposed usage defaults
+## Placed-image rules
 
 - Primary symbol: start at 48px wide. Micro: use at 16-32px; inspect its actual appearance on the destination background.
 - Horizontal lockup: start at 240px wide. Use the standalone symbol if lettering becomes too small.
@@ -75,15 +75,15 @@ Avoid: "serverless," "free when stopped," "never lose your data," "supports ever
 Example commands for brand materials:
 
 ```sh
-serverku up demo
-serverku status demo
-serverku down demo
+${name} up demo
+${name} status demo
+${name} down demo
 ```
 
 These are examples only; creating the kit does not execute them or provision cloud resources.
 
 ## Delivery and review
 
-The complete kit lives under `brand/` in the Serverku repository. It includes SVGs, transparent PNGs, icon candidates, a seven-page PDF, this brand information, source context, editable geometry, licensed fonts, validation records and a portable ZIP.
+The maintained kit lives under `brand/kit/` in the ${name} repository. It includes SVGs, transparent PNGs, icon candidates, a seven-page PDF, this brand information, current repository context, editable geometry, licensed fonts and historical reference notes.
 
-The owner selected the conceptual direction. Final geometry, colors, lettering, headline and usage defaults await review. Platform publishing formats do not imply new GUI, browser or operating-system support. No app logic, credentials, cloud resources, release or deployment were changed.
+The owner selected the conceptual direction. Geometry, palette, Sora lettering and placed-image rules are approved. Headlines remain suggestions. Platform publishing formats do not imply new GUI, browser or operating-system support. No app logic, credentials, cloud resources, release or deployment were changed.

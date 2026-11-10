@@ -11,10 +11,14 @@ import sys
 import xml.etree.ElementTree as ET
 
 HEX = re.compile(r'(?<![\w#])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![\w])')
+# Outside stylesheets a following '-' means a Markdown anchor such as #add-a-provider.
+PROSE_HEX = re.compile(HEX.pattern[:-len('(?![\w])')] + '(?![\w-])')
 FUNCTION = re.compile(r'\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\s*\([^\n;]*?\)', re.I)
-CSS_NAMED = re.compile(r'(?:\b(?:fill|stroke)\s*=\s*[\"\']|(?:color|background(?:-color)?|border-color|fill|stroke)\s*:\s*)([a-zA-Z]+)(?=[;\s\"\'}])')
-# Files where a short hex colour is real syntax; elsewhere '#123' is usually an issue or PR number.
+CSS_NAMED = re.compile(r'(?:\b(?:fill|stroke)\s*=\s*[\"\']|(?<![\w-])(?:color|background(?:-color)?|border-color|fill|stroke)\s*:[ \t]*)([a-zA-Z]+)(?=[;\s\"\'}])')
+# Stylesheet/markup files: every colour syntax is checked here. Elsewhere only hex is checked,
+# because 'color (x)', 'color: auto' and '#123' are ordinary prose, YAML or issue references.
 STYLE = {'.css', '.scss', '.html', '.svg', '.js', '.jsx', '.mjs', '.ts', '.tsx'}
+LOCAL_ONLY = {'.build', 'node_modules', '__pycache__', '.DS_Store', '.venv', 'venv'}
 TEXT = {'.py', '.mjs', '.js', '.jsx', '.ts', '.tsx', '.css', '.scss', '.html', '.svg', '.json', '.webmanifest', '.md', '.go', '.dart', '.yaml', '.yml', '.txt'}
 
 
@@ -48,29 +52,38 @@ def check(root):
         paths = sorted(set(raw.decode().split('\0')) - {''})
     else:  # Isolated mutation-test copies are not repositories.
         paths = [str(p.relative_to(root)) for p in root.rglob('*') if p.is_file()]
+    context = json.loads((root / 'brand/kit/reference/repo-context.json').read_text())
+    if context['source_files']['brand/tokens.json']['sha256'] != hashlib.sha256(token_path.read_bytes()).hexdigest():
+        errors.append('brand/tokens.json changed since the kit was built; run make brand-build')
     for name in paths:
         path = root / name
         if not path.is_file() or (path.suffix not in TEXT and path.name != 'Makefile'):
             continue
+        try:
+            text = path.read_text(encoding='utf-8')
+        except UnicodeDecodeError:
+            errors.append(f'{name}: not UTF-8; cannot be scanned')
+            continue
+        # Personal paths are checked even in unchecked (historical) files.
+        if name.startswith('brand/') and re.search(r'/(?:Users|home)/[^\s\"\']+', text):
+            errors.append(f'{name}: personal absolute path')
         unchecked = [e for e in exceptions if any(fnmatch.fnmatchcase(name, pat) for pat in e['paths'])]
         if any(e.get('kind') != 'ansi' for e in unchecked):
             continue
-        text = path.read_text(encoding='utf-8')
         if name != 'brand/tokens.json':
-            for match in HEX.finditer(text):
+            style = path.suffix in STYLE
+            for match in (HEX if style else PROSE_HEX).finditer(text):
                 value = match.group()
-                if len(value) in (4, 5) and value[1:].isdigit() and path.suffix not in STYLE:
+                if len(value) in (4, 5) and value[1:].isdigit() and not style:
                     continue  # issue/PR reference such as #123, not a colour
                 if canonical(value) not in allowed:
                     errors.append(f'{name}: colour {match.group()} has no token')
-            # Functional and named CSS colours must be expressed as tokens/hex.
-            for match in FUNCTION.finditer(text):
-                errors.append(f'{name}: functional colour {match.group()} has no token mapping')
-            for match in CSS_NAMED.finditer(text):
-                if match.group(1) not in {'none', 'currentColor', 'transparent', 'inherit', 'var', 'url'}:
-                    errors.append(f'{name}: named colour {match.group(1)} has no token mapping')
-        if name.startswith('brand/') and re.search(r'/(?:Users|home)/[^\s\"\']+', text):
-            errors.append(f'{name}: personal absolute path')
+            if style:  # Functional and named CSS colours must be expressed as tokens/hex.
+                for match in FUNCTION.finditer(text):
+                    errors.append(f'{name}: functional colour {match.group()} has no token mapping')
+                for match in CSS_NAMED.finditer(text):
+                    if match.group(1) not in {'none', 'currentColor', 'transparent', 'inherit', 'var', 'url'}:
+                        errors.append(f'{name}: named colour {match.group(1)} has no token mapping')
     kit = root / 'brand/kit'
     expected = data['svg_fill_roles']
     actual_paths = {str(p.relative_to(root / 'brand')) for p in (kit / 'svg').glob('*.svg')}
@@ -95,9 +108,10 @@ def check(root):
     if manifest.get('name') != data['name'] or manifest.get('short_name') != data['name']:
         errors.append('site.webmanifest: product name drift')
     entries = json.loads((kit / 'manifest.json').read_text())['files']
+    # Same exclusions as build_kit.file_list(): local-only folders and archives never ship.
     actual_files = {str(p.relative_to(kit)) for p in kit.rglob('*') if p.is_file()
-                    and p.name != 'manifest.json'
-                    and not any(part in {'.build', 'node_modules', '__pycache__', '.DS_Store'} for part in p.relative_to(kit).parts)}
+                    and p.name != 'manifest.json' and p.suffix != '.zip'
+                    and not any(part in LOCAL_ONLY for part in p.relative_to(kit).parts)}
     if actual_files != set(entries):
         errors.append('kit manifest file coverage differs from disk')
     for name, item in entries.items():

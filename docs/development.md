@@ -10,7 +10,7 @@ make build       # build the CLI binary
 make test        # run all tests
 make test-race   # tests with the race detector
 make lint        # golangci-lint
-make check       # fmt + vet + test (run before pushing)
+make check       # brand-check + fmt + vet + test (run before pushing)
 ```
 
 Go 1.23+. CI runs build, tests, and golangci-lint on every push and PR.

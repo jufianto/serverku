@@ -65,11 +65,35 @@ class PaletteMutations(unittest.TestCase):
         self.assertTrue(any('role coverage' in error for error in guard.check(self.root)))
 
     def test_changed_token_requires_rebuild(self):
+        # mist only appears in raster/PDF outputs, so only the build-input hash can catch it.
         path = self.root / 'brand/tokens.json'
         data = json.loads(path.read_text())
-        data['colors']['ink']['value'] = '#173D43'
+        data['colors']['mist']['value'] = '#F2F8F8'
         path.write_text(json.dumps(data))
-        self.assertTrue(guard.check(self.root))
+        self.assertTrue(any('run make brand-build' in e for e in guard.check(self.root)))
+
+    def test_remapped_role_requires_rebuild(self):
+        path = self.root / 'brand/tokens.json'
+        data = json.loads(path.read_text())
+        data['surfaces']['kit']['panel'] = 'white'
+        path.write_text(json.dumps(data))
+        self.assertTrue(any('run make brand-build' in e for e in guard.check(self.root)))
+
+    def test_ordinary_prose_and_code_pass(self):
+        (self.root / 'guide.md').write_text(
+            '[Add a provider](#add-a-provider)\n\n```yaml\ncolor: auto\nbackground: true\n```\n')
+        (self.root / 'theme.go').write_text('// accent color (teal) and lab (see below)\n')
+        self.assertEqual(guard.check(self.root), [])
+
+    def test_undecodable_file_is_named(self):
+        (self.root / 'notes.txt').write_bytes('caf\xe9'.encode('latin-1'))
+        errors = guard.check(self.root)
+        self.assertIn('notes.txt: not UTF-8; cannot be scanned', errors)
+
+    def test_personal_path_fails_in_unchecked_history(self):
+        path = self.root / 'brand/kit/reference/historical-app-alignment.md'
+        path.write_text(path.read_text() + '\nSee /Users/someone/kit\n')
+        self.assertTrue(any('personal absolute path' in e for e in guard.check(self.root)))
 
 
 if __name__ == '__main__':

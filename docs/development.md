@@ -15,6 +15,11 @@ make check       # fmt + vet + test (run before pushing)
 
 Go 1.23+. CI runs build, tests, and golangci-lint on every push and PR.
 
+CI also runs the dependency-free `make brand-check` (Python 3.11+). For kit
+changes, follow [the brand reference](reference/brand.md),
+[serverku-brand skill](../.claude/skills/serverku-brand/SKILL.md) and
+[review rules](review.md); run `make brand-verify` and `make brand-rebuild`.
+
 ## Test against a throwaway config dir
 
 Never point a dev build at your real `~/.serverku/`:

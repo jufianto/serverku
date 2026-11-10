@@ -1,5 +1,10 @@
 # Architecture Overview
 
+Graphical identity is defined in [the brand reference](reference/brand.md) and
+[serverku-brand skill](../.claude/skills/serverku-brand/SKILL.md). Follow
+[review rules](review.md) for kit or future frontend work. The current UI is a
+terminal CLI; the brand kit does not change terminal appearance.
+
 ## System Design
 
 serverku is a CLI tool that orchestrates cloud VMs on demand. The system is composed of four core components:

@@ -26,7 +26,11 @@
 - Run one test: `go test ./internal/orchestrator -run TestUpWithStorage`
 
 ## Verification
-- There is no Makefile, task runner, linter config, formatter config, or CI workflow in this repo. Prefer targeted `go test` for touched packages, then `go test ./...`, then a build if CLI code changed.
+- A Makefile, golangci-lint config and GitHub CI are present. Run `make check` before a PR; prefer targeted `go test` for touched packages, then `go test ./...`, then a build if CLI code changed. CI also runs race tests and lint.
+
+## Branding and review
+- Read [the brand reference](docs/reference/brand.md), [serverku-brand skill](.claude/skills/serverku-brand/SKILL.md), [skill index](.claude/skills/README.md) and [review rules](docs/review.md) for graphical identity or future frontend changes.
+- `brand/tokens.json` is the canonical palette. Run `make brand-check`; kit changes also require `make brand-verify` and `make brand-rebuild`. Preserve terminal appearance.
 
 ## GCP Notes
 - GCP provider construction is in `internal/provider/gcp/gcp.go` and uses `compute.NewService(ctx)`, so local Application Default Credentials must already work for real provider calls.

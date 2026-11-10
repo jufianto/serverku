@@ -43,6 +43,10 @@ and how to exercise a dev build against a throwaway `--config-dir`.
 
 ## Pull requests
 
+Follow [review rules](docs/review.md). For brand changes, read
+[the brand reference](docs/reference/brand.md) and
+[serverku-brand skill](.claude/skills/serverku-brand/SKILL.md).
+
 - One PR per coherent piece of work; multiple commits inside are fine.
 - Describe what you verified and how (test output, real-cloud smoke test,
   etc.).

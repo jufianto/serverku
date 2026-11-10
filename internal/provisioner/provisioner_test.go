@@ -11,7 +11,7 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestMountDiskScript(t *testing.T) {
-	script := mountDiskScript("myproject-data", "/data")
+	script := mountDiskScript("gcp", "myproject-data", "/data")
 
 	// Should reference the stable by-id device path
 	if !strings.Contains(script, "/dev/disk/by-id/google-myproject-data") {
@@ -45,13 +45,39 @@ func TestMountDiskScript(t *testing.T) {
 }
 
 func TestMountDiskScriptDifferentDisk(t *testing.T) {
-	script := mountDiskScript("other-disk", "/mnt/storage")
+	script := mountDiskScript("gcp", "other-disk", "/mnt/storage")
 
 	if !strings.Contains(script, "/dev/disk/by-id/google-other-disk") {
 		t.Errorf("expected device path for 'other-disk', got script:\n%s", script)
 	}
 	if !strings.Contains(script, "/mnt/storage") {
 		t.Errorf("expected mount path /mnt/storage, got script:\n%s", script)
+	}
+}
+
+func TestMountDiskScriptDigitalOcean(t *testing.T) {
+	script := mountDiskScript("digitalocean", "serverku-wpblog-data", "/data")
+
+	// DigitalOcean exposes volumes at /dev/disk/by-id/scsi-0DO_Volume_<name>,
+	// NOT the GCP google-<name> path.
+	if !strings.Contains(script, "/dev/disk/by-id/scsi-0DO_Volume_serverku-wpblog-data") {
+		t.Errorf("expected DO device path scsi-0DO_Volume_serverku-wpblog-data, got script:\n%s", script)
+	}
+	if strings.Contains(script, "google-") {
+		t.Errorf("DO script must not use the GCP google- device path, got script:\n%s", script)
+	}
+}
+
+func TestDiskDevicePath(t *testing.T) {
+	cases := map[string]string{
+		"gcp":          "/dev/disk/by-id/google-d",
+		"digitalocean": "/dev/disk/by-id/scsi-0DO_Volume_d",
+		"":             "/dev/disk/by-id/google-d", // unknown defaults to GCP
+	}
+	for provider, want := range cases {
+		if got := diskDevicePath(provider, "d"); got != want {
+			t.Errorf("diskDevicePath(%q): got %q, want %q", provider, got, want)
+		}
 	}
 }
 
@@ -91,6 +117,11 @@ func TestComposeUpScript(t *testing.T) {
 	}
 	if !strings.Contains(script, "docker compose up -d") {
 		t.Error("expected docker compose up -d")
+	}
+	// Must run via sudo: the serverku user isn't in the docker group yet within
+	// the provisioning SSH session (usermod only applies to new logins).
+	if !strings.Contains(script, "sudo docker compose up -d") {
+		t.Errorf("expected docker to run via sudo during provisioning, got: %s", script)
 	}
 }
 

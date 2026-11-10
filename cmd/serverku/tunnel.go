@@ -34,7 +34,7 @@ the tunnel is active and exits when interrupted.`,
 				return fmt.Errorf("project %q is not running or has no external IP", name)
 			}
 
-			privKeyPath, err := store.GetSSHPrivateKeyPath()
+			privKeyPath, err := projectSSHKeyPath(name)
 			if err != nil {
 				return fmt.Errorf("failed to get SSH private key: %w", err)
 			}
@@ -52,6 +52,7 @@ the tunnel is active and exits when interrupted.`,
 				"-N",
 				"-L", forward,
 				"-i", privKeyPath,
+				"-o", "IdentitiesOnly=yes",
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "LogLevel=ERROR",
 				fmt.Sprintf("serverku@%s", state.ExternalIP),

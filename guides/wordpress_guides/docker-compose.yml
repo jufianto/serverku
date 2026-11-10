@@ -1,0 +1,26 @@
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: change-me-please
+      MYSQL_RANDOM_ROOT_PASSWORD: "1"
+    volumes:
+      - ./mysql:/var/lib/mysql
+
+  wordpress:
+    image: wordpress:6-php8.3-apache
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: change-me-please
+    volumes:
+      - ./wp-content:/var/www/html/wp-content
+    expose:
+      - "80"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jufianto/serverku/internal/config"
@@ -27,6 +28,9 @@ type mockProvider struct {
 	snapshotDiskFunc  func(ctx context.Context, diskName string, snapshotName string) (string, error)
 	restoreDiskFunc   func(ctx context.Context, config provider.DiskConfig, snapshot string) (*provider.Disk, error)
 
+	listSnapshotsFunc  func(context.Context, provider.SnapshotQuery) ([]provider.Snapshot, error)
+	deleteSnapshotFunc func(context.Context, provider.Snapshot) error
+	deletedSnapshots   map[string]bool
 	// Track calls for assertions
 	calls []string
 }
@@ -135,6 +139,33 @@ func (m *mockProvider) SnapshotDisk(ctx context.Context, diskName string, snapsh
 	return "snap-789", nil
 }
 
+func (m *mockProvider) ListProjectSnapshots(ctx context.Context, q provider.SnapshotQuery) ([]provider.Snapshot, error) {
+	m.calls = append(m.calls, "ListProjectSnapshots")
+	if m.listSnapshotsFunc != nil {
+		return m.listSnapshotsFunc(ctx, q)
+	}
+	var result []provider.Snapshot
+	for _, snap := range q.Tracked {
+		if !m.deletedSnapshots[snap.ID] {
+			result = append(result, snap)
+		}
+	}
+	return result, nil
+}
+func (m *mockProvider) DeleteSnapshot(ctx context.Context, snap provider.Snapshot) error {
+	m.calls = append(m.calls, "DeleteSnapshot")
+	if m.deleteSnapshotFunc != nil {
+		if err := m.deleteSnapshotFunc(ctx, snap); err != nil {
+			return err
+		}
+	}
+	if m.deletedSnapshots == nil {
+		m.deletedSnapshots = map[string]bool{}
+	}
+	m.deletedSnapshots[snap.ID] = true
+	return nil
+}
+
 // testSetup creates a temp directory, store, and saves a test project config.
 func testSetup(t *testing.T, storageCfg config.StorageConfig) (*Orchestrator, *mockProvider, ProviderFactory) {
 	t.Helper()
@@ -183,6 +214,12 @@ func TestUpWithStorage(t *testing.T) {
 		SizeGB:    20,
 		MountPath: "/data",
 	})
+	mock.attachDiskFunc = func(_ context.Context, vmName, diskName string) error {
+		if vmName != "serverku-test-project" || diskName != "serverku-test-project-data" {
+			t.Errorf("name-based attachment got %q, %q", vmName, diskName)
+		}
+		return nil
+	}
 
 	ctx := context.Background()
 	result, err := orch.Up(ctx, "test-project", factory)
@@ -351,6 +388,97 @@ func TestUpDiskAttachFails(t *testing.T) {
 	}
 	if state.DiskName == "" {
 		t.Error("disk should be preserved when attach fails")
+	}
+	if state.VMID != "" || state.VMName != "" || state.ExternalIP != "" || state.StoppedAt == nil {
+		t.Fatalf("deleted VM remains tracked: %+v", state)
+	}
+}
+
+type mockIDAttacher struct {
+	*mockProvider
+	attachedID string
+}
+
+func (m *mockIDAttacher) AttachDiskByID(_ context.Context, _ string, diskID string) error {
+	m.attachedID = diskID
+	return nil
+}
+
+func TestUpUsesSavedDiskIDForAttachment(t *testing.T) {
+	for _, reuse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reuse=%t", reuse), func(t *testing.T) {
+			orch, mock, _ := testSetup(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"})
+			wantID := "disk-456"
+			if reuse {
+				state := config.NewState("test-project", "digitalocean", "sgp1", "")
+				state.DiskID = "existing-volume-id"
+				state.DiskName = "serverku-test-project-data"
+				wantID = state.DiskID
+				if err := orch.store.SaveState(state); err != nil {
+					t.Fatal(err)
+				}
+			}
+			attacher := &mockIDAttacher{mockProvider: mock}
+			factory := func(context.Context, *config.ProjectConfig) (provider.CloudProvider, error) { return attacher, nil }
+			if _, err := orch.Up(context.Background(), "test-project", factory); err != nil {
+				t.Fatal(err)
+			}
+			if attacher.attachedID != wantID {
+				t.Fatalf("attached ID = %q, want %q", attacher.attachedID, wantID)
+			}
+			for _, call := range mock.calls {
+				if call == "AttachDisk" || (reuse && call == "CreateDisk") {
+					t.Fatalf("unexpected call %s", call)
+				}
+			}
+		})
+	}
+}
+
+func TestUpFallsBackToDiskNameWithoutSavedID(t *testing.T) {
+	orch, mock, _ := testSetup(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"})
+	state := config.NewState("test-project", "digitalocean", "sgp1", "")
+	state.DiskName = "serverku-test-project-data"
+	if err := orch.store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+	var usedName bool
+	mock.attachDiskFunc = func(_ context.Context, _, diskName string) error {
+		usedName = diskName == state.DiskName
+		return nil
+	}
+	attacher := &mockIDAttacher{mockProvider: mock}
+	factory := func(context.Context, *config.ProjectConfig) (provider.CloudProvider, error) { return attacher, nil }
+	if _, err := orch.Up(context.Background(), "test-project", factory); err != nil {
+		t.Fatal(err)
+	}
+	if !usedName || attacher.attachedID != "" {
+		t.Fatal("legacy state without a disk ID must use name-based attachment")
+	}
+}
+
+func TestUpDiskAttachFailureReportsCleanupFailure(t *testing.T) {
+	orch, mock, factory := testSetup(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"})
+	mock.attachDiskFunc = func(context.Context, string, string) error { return fmt.Errorf("attach rejected") }
+	mock.destroyVMFunc = func(context.Context, string) error { return fmt.Errorf("deletion forbidden") }
+	_, err := orch.Up(context.Background(), "test-project", factory)
+	if err == nil || !strings.Contains(err.Error(), "attach rejected") || !strings.Contains(err.Error(), "automatic VM cleanup failed") || !strings.Contains(err.Error(), "deletion forbidden") {
+		t.Fatalf("missing attachment or cleanup error: %v", err)
+	}
+	state, err := orch.store.LoadState("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != config.StatusError || state.VMID == "" || state.VMName == "" || state.DiskID == "" {
+		t.Fatalf("resources must remain tracked after failed cleanup: %+v", state)
+	}
+	if !strings.Contains(state.ErrorMsg, "deletion forbidden") {
+		t.Fatalf("cleanup failure not saved: %s", state.ErrorMsg)
+	}
+	for _, call := range mock.calls {
+		if call == "DeleteDisk" {
+			t.Fatal("persistent disk deleted")
+		}
 	}
 }
 
@@ -554,7 +682,7 @@ func TestDestroy(t *testing.T) {
 	}
 
 	// Should have: DetachDisk, DestroyVM (from Down), then DeleteDisk
-	expectedCalls := []string{"DetachDisk", "DestroyVM", "DeleteDisk"}
+	expectedCalls := []string{"DetachDisk", "DestroyVM", "ListProjectSnapshots", "DeleteDisk"}
 	if len(mock.calls) != len(expectedCalls) {
 		t.Fatalf("got %d calls, want %d: %v", len(mock.calls), len(expectedCalls), mock.calls)
 	}
@@ -564,9 +692,18 @@ func TestDestroy(t *testing.T) {
 		}
 	}
 
-	// Verify config and state are deleted
-	if orch.store.ProjectExists("test-project") {
-		t.Error("project config should be deleted after Destroy")
+	// The project config must be PRESERVED -- destroy removes cloud resources,
+	// not the project definition, so it can be brought back with `up`.
+	if !orch.store.ProjectExists("test-project") {
+		t.Error("project config should be preserved after Destroy")
+	}
+	// A minimal destroyed record preserves the last lifecycle action.
+	st, err := orch.store.LoadState("test-project")
+	if err != nil {
+		t.Fatalf("LoadState after Destroy: %v", err)
+	}
+	if st.Status != config.StatusDestroyed || st.VMName != "" || st.DiskName != "" {
+		t.Errorf("state should be reset after Destroy, got %+v", st)
 	}
 }
 
@@ -592,7 +729,7 @@ func TestDestroyStoppedWithDisk(t *testing.T) {
 	}
 
 	// Should only delete disk (no VM to destroy)
-	expectedCalls := []string{"DeleteDisk"}
+	expectedCalls := []string{"ListProjectSnapshots", "DeleteDisk"}
 	if len(mock.calls) != len(expectedCalls) {
 		t.Fatalf("got %d calls, want %d: %v", len(mock.calls), len(expectedCalls), mock.calls)
 	}
@@ -770,6 +907,13 @@ func TestUpProvisioningFailureDestroysVM(t *testing.T) {
 	if state.Status != config.StatusError {
 		t.Errorf("state.Status = %q, want %q", state.Status, config.StatusError)
 	}
+	if state.VMID != "" || state.VMName != "" || state.ExternalIP != "" {
+		t.Errorf("deleted VM remains tracked: %+v", state)
+	}
+	if state.DiskID == "" || state.DiskName == "" {
+		t.Error("persistent disk tracking must survive VM cleanup")
+	}
+
 }
 
 // ---------------------------------------------------------------------------
@@ -967,7 +1111,7 @@ func TestDestroyDeletesFirewall(t *testing.T) {
 	}
 }
 
-func TestDestroyFirewallFailureIsNonFatal(t *testing.T) {
+func TestDestroyFirewallFailureRetainsStateForRetry(t *testing.T) {
 	orch, mock, factory := firewallTestSetup(t, config.StorageConfig{Enabled: false})
 	mock.deleteFirewallFunc = func(ctx context.Context, projectName string) error {
 		return fmt.Errorf("api unavailable")
@@ -980,11 +1124,14 @@ func TestDestroyFirewallFailureIsNonFatal(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := orch.Destroy(ctx, "test-project", factory); err != nil {
-		t.Fatalf("Destroy() should succeed despite firewall cleanup failure, got: %v", err)
+	if err := orch.Destroy(ctx, "test-project", factory); err == nil {
+		t.Fatal("destroy must report failed firewall cleanup")
 	}
-	if orch.store.ProjectExists("test-project") {
-		t.Error("project config should be deleted even when firewall cleanup fails")
+	if _, err := os.Stat(orch.store.StateDir() + "/test-project.json"); err != nil {
+		t.Fatal("cleanup state must survive a failed destroy", err)
+	}
+	if !orch.store.ProjectExists("test-project") {
+		t.Error("project config should be preserved even when firewall cleanup fails")
 	}
 }
 
@@ -1359,5 +1506,32 @@ func TestPreflightDNSWithoutSupport(t *testing.T) {
 	}
 	if c, ok := findCheck(res, "dns"); !ok || c.OK {
 		t.Errorf("dns check should be present and failing: %+v", c)
+	}
+}
+
+func TestUpProvisioningFailureReportsCleanupFailure(t *testing.T) {
+	mp := &mockProvisioner{provisionFunc: func(context.Context, provisioner.ProvisionOpts) error {
+		return fmt.Errorf("compose rejected")
+	}}
+	orch, mock, factory := testSetupWithProvisioner(t, config.StorageConfig{Enabled: true, SizeGB: 20, MountPath: "/data"}, mp)
+	mock.destroyVMFunc = func(context.Context, string) error { return fmt.Errorf("deletion forbidden") }
+	_, err := orch.Up(context.Background(), "test-project", factory)
+	if err == nil || !strings.Contains(err.Error(), "compose rejected") || !strings.Contains(err.Error(), "automatic VM cleanup failed") || !strings.Contains(err.Error(), "deletion forbidden") {
+		t.Fatalf("missing provisioning or cleanup failure: %v", err)
+	}
+	state, err := orch.store.LoadState("test-project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != config.StatusError || state.VMID == "" || state.VMName == "" || state.ExternalIP == "" {
+		t.Fatalf("VM must remain tracked after failed deletion: %+v", state)
+	}
+	if !strings.Contains(state.ErrorMsg, "deletion forbidden") {
+		t.Errorf("cleanup error not saved: %s", state.ErrorMsg)
+	}
+	for _, call := range mock.calls {
+		if call == "DeleteDisk" {
+			t.Fatal("disk deleted on failed provisioning")
+		}
 	}
 }

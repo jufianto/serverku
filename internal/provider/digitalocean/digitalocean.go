@@ -5,12 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/digitalocean/godo"
+	"github.com/jufianto/serverku/internal/cloudlog"
 	"github.com/jufianto/serverku/internal/provider"
+	"golang.org/x/crypto/ssh"
 )
 
 // Provider implements the CloudProvider interface for DigitalOcean.
@@ -35,7 +39,9 @@ func NewWithToken(token string) (*Provider, error) {
 	if token == "" {
 		return nil, errors.New("digitalocean token is empty")
 	}
-	return &Provider{client: godo.NewFromToken(token)}, nil
+	client := godo.NewFromToken(token)
+	client.HTTPClient.Transport = &cloudlog.Transport{Provider: "digitalocean", Base: client.HTTPClient.Transport}
+	return &Provider{client: client}, nil
 }
 
 // CreateVM creates a new Droplet.
@@ -44,40 +50,24 @@ func (p *Provider) CreateVM(ctx context.Context, cfg provider.VMConfig) (*provid
 		return nil, errors.New("DigitalOcean provider does not support spot instances")
 	}
 
-	// For DigitalOcean, we need to create an SSH key first or find an existing one by name/fingerprint.
-	// Since we are given the public key string directly in VMConfig, the easiest approach
-	// is to create a new SSH key in DO, use it for the Droplet, and then we might leave it
-	// or clean it up. A better approach for serverku is to ensure a key named "serverku-projectname" exists.
-	keyName := fmt.Sprintf("serverku-%s", cfg.Name)
-
-	// Try to find if the key already exists
-	keys, _, err := p.client.Keys.List(ctx, &godo.ListOptions{PerPage: 100})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list SSH keys: %w", err)
-	}
-
-	var sshKeyID int
-	var sshKeyFingerprint string
-	for _, k := range keys {
-		if k.Name == keyName {
-			sshKeyID = k.ID
-			sshKeyFingerprint = k.Fingerprint
-			break
-		}
-	}
-
-	if sshKeyID == 0 {
-		// Create the key
-		req := &godo.KeyCreateRequest{
-			Name:      keyName,
-			PublicKey: cfg.SSHPubKey,
-		}
-		k, _, err := p.client.Keys.Create(ctx, req)
+	key := &provider.SSHKey{ID: cfg.SSHKeyID}
+	if key.ID == "" {
+		var err error
+		key, err = p.ensureSSHKey(ctx, "serverku-"+cfg.Name, cfg.SSHPubKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create SSH key in DigitalOcean: %w", err)
+			return nil, err
 		}
-		sshKeyID = k.ID
-		sshKeyFingerprint = k.Fingerprint
+	}
+	keyID, err := strconv.Atoi(key.ID)
+	if err != nil || keyID <= 0 {
+		return nil, fmt.Errorf("invalid DigitalOcean SSH key ID %q", key.ID)
+	}
+
+	// Older init versions wrote GCP's image family for DigitalOcean too.
+	// Translate that exact legacy default to the corresponding DO slug.
+	image := cfg.Image
+	if image == "" || image == "ubuntu-22-04" {
+		image = "ubuntu-22-04-x64"
 	}
 
 	createRequest := &godo.DropletCreateRequest{
@@ -85,25 +75,129 @@ func (p *Provider) CreateVM(ctx context.Context, cfg provider.VMConfig) (*provid
 		Region: cfg.Region,
 		Size:   cfg.MachineType,
 		Image: godo.DropletCreateImage{
-			Slug: cfg.Image,
+			Slug: image,
 		},
 		SSHKeys: []godo.DropletCreateSSHKey{
-			{ID: sshKeyID, Fingerprint: sshKeyFingerprint},
+			{ID: keyID, Fingerprint: key.Fingerprint},
 		},
 		Tags: cfg.Tags,
+		// DigitalOcean injects the account SSH key into root's authorized_keys
+		// only; it has no equivalent of GCP's guest-agent user creation. serverku
+		// connects as the "serverku" user (see orchestrator), so create that user
+		// via cloud-init with the same key and passwordless sudo.
+		UserData: serverkuUserData(cfg.SSHPubKey),
 	}
 
+	log.Printf("[digitalocean] creating droplet %q in %s (size: %s, image: %s); injecting SSH key and configuring serverku user via cloud-init", cfg.Name, cfg.Region, cfg.MachineType, image)
 	droplet, _, err := p.client.Droplets.Create(ctx, createRequest)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create droplet: %w", err)
 	}
 
+	log.Printf("[digitalocean] droplet %q created (id: %d)", droplet.Name, droplet.ID)
 	return &provider.VM{
 		ID:       fmt.Sprintf("%d", droplet.ID),
 		Name:     droplet.Name,
 		Zone:     cfg.Region,
 		Provider: "digitalocean",
 	}, nil
+}
+
+// ensureSSHKey reuses the account key by identity, regardless of its name.
+// Multiple projects share the local serverku key; DigitalOcean rejects duplicate
+// public keys even when they are registered under different names.
+func (p *Provider) ensureSSHKey(ctx context.Context, name, publicKey string) (*provider.SSHKey, error) {
+	parsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
+	if err != nil {
+		return nil, fmt.Errorf("invalid SSH public key: %w", err)
+	}
+	fingerprint := ssh.FingerprintLegacyMD5(parsed)
+	log.Printf("[digitalocean] looking up account SSH key by fingerprint")
+	key, response, err := p.client.Keys.GetByFingerprint(ctx, fingerprint)
+	if err == nil {
+		log.Printf("[digitalocean] reusing SSH key %q (id: %d)", key.Name, key.ID)
+		return accountSSHKey(key, false), nil
+	}
+	if response == nil || response.StatusCode != http.StatusNotFound {
+		return nil, fmt.Errorf("failed to look up SSH key in DigitalOcean: %w", err)
+	}
+
+	log.Printf("[digitalocean] registering SSH key %q", name)
+	key, response, err = p.client.Keys.Create(ctx, &godo.KeyCreateRequest{
+		Name: name, PublicKey: strings.TrimSpace(publicKey),
+	})
+	if err == nil {
+		log.Printf("[digitalocean] SSH key %q registered (id: %d)", key.Name, key.ID)
+		return accountSSHKey(key, true), nil
+	}
+	// Another concurrent project may have registered the same key after our
+	// lookup. Only accept the conflict if that exact fingerprint now exists.
+	if response != nil && response.StatusCode == http.StatusUnprocessableEntity {
+		if existing, _, lookupErr := p.client.Keys.GetByFingerprint(ctx, fingerprint); lookupErr == nil {
+			log.Printf("[digitalocean] reusing concurrently registered SSH key %q (id: %d)", existing.Name, existing.ID)
+			return accountSSHKey(existing, false), nil
+		}
+	}
+	return nil, fmt.Errorf("failed to create SSH key in DigitalOcean: %w", err)
+}
+
+func accountSSHKey(key *godo.Key, created bool) *provider.SSHKey {
+	return &provider.SSHKey{ID: strconv.Itoa(key.ID), Name: key.Name, Fingerprint: key.Fingerprint, Created: created}
+}
+
+func (p *Provider) EnsureProjectSSHKey(ctx context.Context, projectName, publicKey string) (*provider.SSHKey, error) {
+	return p.ensureSSHKey(ctx, "serverku-"+projectName, publicKey)
+}
+
+// DeleteSSHKey verifies both ID and fingerprint before deleting an owned key.
+func (p *Provider) DeleteSSHKey(ctx context.Context, id, publicKey string) error {
+	keyID, err := strconv.Atoi(id)
+	if err != nil || keyID <= 0 {
+		return fmt.Errorf("invalid SSH key ID %q", id)
+	}
+	parsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
+	if err != nil {
+		return fmt.Errorf("invalid recorded SSH public key: %w", err)
+	}
+	key, response, err := p.client.Keys.GetByID(ctx, keyID)
+	if response != nil && response.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to verify SSH key before deletion: %w", err)
+	}
+	if key.Fingerprint != ssh.FingerprintLegacyMD5(parsed) {
+		return fmt.Errorf("SSH key %s fingerprint differs from recorded key; refusing deletion", id)
+	}
+	log.Printf("[digitalocean] deleting project SSH key %q (id: %s)", key.Name, id)
+	response, err = p.client.Keys.DeleteByID(ctx, keyID)
+	if response != nil && response.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to delete SSH key: %w", err)
+	}
+	return nil
+}
+
+// serverkuUserData returns a cloud-init config that provisions the "serverku"
+// login user with passwordless sudo and the given public key. Returns an empty
+// string when no key is provided so the droplet keeps DigitalOcean's default
+// (root-only) SSH setup.
+func serverkuUserData(pubKey string) string {
+	pubKey = strings.TrimSpace(pubKey)
+	if pubKey == "" {
+		return ""
+	}
+	return fmt.Sprintf(`#cloud-config
+users:
+  - name: serverku
+    groups: sudo
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - %s
+`, pubKey)
 }
 
 // GetVM retrieves a Droplet by name.
@@ -185,6 +279,7 @@ func (p *Provider) GetExternalIP(ctx context.Context, name string) (string, erro
 
 // StopVM shuts down a Droplet.
 func (p *Provider) StopVM(ctx context.Context, name string) error {
+	log.Printf("[digitalocean] powering off droplet %q", name)
 	vm, err := p.GetVM(ctx, name)
 	if err != nil {
 		return err
@@ -206,6 +301,7 @@ func (p *Provider) StopVM(ctx context.Context, name string) error {
 
 // StartVM starts a previously stopped Droplet.
 func (p *Provider) StartVM(ctx context.Context, name string) error {
+	log.Printf("[digitalocean] powering on droplet %q", name)
 	vm, err := p.GetVM(ctx, name)
 	if err != nil {
 		return err
@@ -225,6 +321,7 @@ func (p *Provider) StartVM(ctx context.Context, name string) error {
 
 // DestroyVM permanently deletes a Droplet.
 func (p *Provider) DestroyVM(ctx context.Context, name string) error {
+	log.Printf("[digitalocean] deleting droplet %q", name)
 	vm, err := p.GetVM(ctx, name)
 	if err != nil {
 		// If it's already gone, consider it a success
@@ -246,12 +343,14 @@ func (p *Provider) DestroyVM(ctx context.Context, name string) error {
 
 // WaitForReady blocks until the Droplet is in an active state.
 func (p *Provider) WaitForReady(ctx context.Context, name string) error {
+	log.Printf("[digitalocean] waiting for droplet to become active %q", name)
 	maxRetries := 60 // 60 * 5s = 5 minutes
 	for i := 0; i < maxRetries; i++ {
 		status, err := p.GetVMStatus(ctx, name)
 		if err != nil {
 			log.Printf("[digitalocean] error checking droplet status: %v", err)
 		} else if status.State == provider.VMStateRunning {
+			log.Printf("[digitalocean] droplet %q is active; SSH readiness is checked during provisioning", name)
 			return nil
 		}
 
@@ -266,6 +365,7 @@ func (p *Provider) WaitForReady(ctx context.Context, name string) error {
 
 // CreateDisk creates a new Block Storage volume.
 func (p *Provider) CreateDisk(ctx context.Context, cfg provider.DiskConfig) (*provider.Disk, error) {
+	log.Printf("[digitalocean] creating volume %q (%d GB) in %s", cfg.Name, cfg.SizeGB, cfg.Zone)
 	req := &godo.VolumeCreateRequest{
 		Name:          cfg.Name,
 		Region:        cfg.Zone, // Use zone as region for DO
@@ -278,6 +378,7 @@ func (p *Provider) CreateDisk(ctx context.Context, cfg provider.DiskConfig) (*pr
 		return nil, fmt.Errorf("failed to create volume: %w", err)
 	}
 
+	log.Printf("[digitalocean] volume %q created (id: %s)", vol.Name, vol.ID)
 	return &provider.Disk{
 		ID:       vol.ID,
 		Name:     vol.Name,
@@ -314,6 +415,7 @@ func (p *Provider) getVolumeIDByName(ctx context.Context, name string) (string, 
 
 // AttachDisk attaches a Block Storage volume to a Droplet.
 func (p *Provider) AttachDisk(ctx context.Context, vmName, diskName string) error {
+	log.Printf("[digitalocean] attaching volume %q for droplet %q", diskName, vmName)
 	dropletID, err := p.getDropletIDByName(ctx, vmName)
 	if err != nil {
 		return err
@@ -324,9 +426,27 @@ func (p *Provider) AttachDisk(ctx context.Context, vmName, diskName string) erro
 		return err
 	}
 
+	return p.attachVolume(ctx, dropletID, volID)
+}
+
+// AttachDiskByID uses the UUID returned by volume creation (or saved in state).
+// A newly created volume may not yet appear in the name-filtered listing.
+func (p *Provider) AttachDiskByID(ctx context.Context, vmName, diskID string) error {
+	if diskID == "" {
+		return errors.New("volume ID is empty")
+	}
+	log.Printf("[digitalocean] attaching volume ID %q for droplet %q", diskID, vmName)
+	dropletID, err := p.getDropletIDByName(ctx, vmName)
+	if err != nil {
+		return err
+	}
+	return p.attachVolume(ctx, dropletID, diskID)
+}
+
+func (p *Provider) attachVolume(ctx context.Context, dropletID int, volID string) error {
 	action, _, err := p.client.StorageActions.Attach(ctx, volID, dropletID)
 	if err != nil {
-		return fmt.Errorf("failed to attach volume: %w", err)
+		return fmt.Errorf("failed to attach volume %q: %w", volID, err)
 	}
 
 	// Wait for attachment to complete
@@ -351,6 +471,7 @@ func (p *Provider) AttachDisk(ctx context.Context, vmName, diskName string) erro
 
 // DetachDisk detaches a Block Storage volume from a Droplet.
 func (p *Provider) DetachDisk(ctx context.Context, vmName, diskName string) error {
+	log.Printf("[digitalocean] detaching volume %q for droplet %q", diskName, vmName)
 	dropletID, err := p.getDropletIDByName(ctx, vmName)
 	if err != nil {
 		return err
@@ -388,6 +509,7 @@ func (p *Provider) DetachDisk(ctx context.Context, vmName, diskName string) erro
 
 // DeleteDisk permanently deletes a Block Storage volume.
 func (p *Provider) DeleteDisk(ctx context.Context, diskName string) error {
+	log.Printf("[digitalocean] deleting volume %q", diskName)
 	volID, err := p.getVolumeIDByName(ctx, diskName)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -421,4 +543,90 @@ func (p *Provider) AccountEmail(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("digitalocean credentials check failed: %w", err)
 	}
 	return acct.Email, nil
+}
+
+// ListComponents reports the live state of the DigitalOcean resources serverku
+// manages for a project: the droplet and volume (removed by destroy), plus the
+// shared account SSH key (intentionally retained) and volume snapshots (removed by destroy).
+func (p *Provider) ListComponents(ctx context.Context, q provider.ComponentQuery) ([]provider.Component, error) {
+	var comps []provider.Component
+
+	// VM (droplet).
+	vmPresent := false
+	if _, err := p.GetVM(ctx, q.VMName); err == nil {
+		vmPresent = true
+	}
+	comps = append(comps, provider.Component{Kind: "VM", Name: q.VMName, Present: vmPresent, RemovedByDestroy: true})
+
+	// Volume.
+	var volID string
+	if q.DiskName != "" {
+		present, detail := false, ""
+		if vols, _, err := p.client.Storage.ListVolumes(ctx, &godo.ListVolumeParams{Name: q.DiskName}); err == nil && len(vols) > 0 {
+			present, volID = true, vols[0].ID
+			detail = fmt.Sprintf("%dGB", int(vols[0].SizeGigaBytes))
+		}
+		comps = append(comps, provider.Component{Kind: "Volume", Name: q.DiskName, Detail: detail, Present: present, RemovedByDestroy: true})
+	}
+
+	for _, disk := range q.RetainedDisks {
+		c := provider.Component{Kind: "Volume", Name: disk.Name, Detail: "retained after restore", RemovedByDestroy: true}
+		if disk.ID != "" {
+			vol, resp, err := p.client.Storage.GetVolume(ctx, disk.ID)
+			c.Present = err == nil
+			c.LookupFailed = err != nil && (resp == nil || resp.StatusCode != http.StatusNotFound)
+			if err == nil {
+				c.Detail = fmt.Sprintf("%dGB; retained after restore", vol.SizeGigaBytes)
+			}
+		} else {
+			vols, _, err := p.client.Storage.ListVolumes(ctx, &godo.ListVolumeParams{Name: disk.Name})
+			c.LookupFailed = err != nil
+			c.Present = err == nil && len(vols) > 0
+		}
+		comps = append(comps, c)
+	}
+
+	// Resolve the actual SSH registration by fingerprint, including custom
+	// and legacy keys registered under another project name.
+	keyComponent := provider.Component{Kind: "SSH key", Name: "local serverku key", Shared: !q.SSHKeyOwned, RemovedByDestroy: q.SSHKeyOwned}
+	if q.SSHPubKey == "" {
+		keyComponent.LookupFailed = true
+		keyComponent.Detail = "local public key unavailable"
+	} else if parsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(q.SSHPubKey)); err != nil {
+		keyComponent.LookupFailed = true
+		keyComponent.Detail = "invalid local public key"
+	} else {
+		key, response, err := p.client.Keys.GetByFingerprint(ctx, ssh.FingerprintLegacyMD5(parsed))
+		switch {
+		case err == nil:
+			keyComponent.Name = key.Name
+			keyComponent.Present = true
+			keyComponent.Detail = fmt.Sprintf("id: %d", key.ID)
+		case response != nil && response.StatusCode == http.StatusNotFound:
+			keyComponent.Detail = "not registered"
+		default:
+			keyComponent.LookupFailed = true
+			keyComponent.Detail = "account key lookup failed"
+		}
+	}
+	comps = append(comps, keyComponent)
+
+	// Snapshots belong to the project's source disks or recorded backups.
+	if q.DiskID == "" {
+		q.DiskID = volID
+	}
+	disks := append([]provider.DiskIdentity{}, q.RetainedDisks...)
+	if q.DiskName != "" || q.DiskID != "" {
+		disks = append(disks, provider.DiskIdentity{ID: q.DiskID, Name: q.DiskName})
+	}
+	if len(disks) > 0 || len(q.Snapshots) > 0 {
+		snaps, err := p.ListProjectSnapshots(ctx, provider.SnapshotQuery{Disks: disks, Tracked: q.Snapshots})
+		detail := fmt.Sprintf("%d found", len(snaps))
+		if err != nil {
+			detail = "snapshot lookup failed"
+		}
+		comps = append(comps, provider.Component{Kind: "Snapshot", Detail: detail, Present: len(snaps) > 0, RemovedByDestroy: true, LookupFailed: err != nil})
+	}
+
+	return comps, nil
 }

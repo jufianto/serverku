@@ -3,11 +3,11 @@ package provisioner
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"time"
 
+	"github.com/jufianto/serverku/internal/cloudlog"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -89,7 +89,7 @@ func connectSSHWithRetry(ctx context.Context, host string, privateKeyPath string
 		default:
 		}
 
-		log.Printf("[provisioner] SSH attempt %d failed (%v), retrying in %s...", attempt, err, delay)
+		cloudlog.Debugf("[provisioner] SSH attempt %d failed (%v), retrying in %s...", attempt, err, delay)
 
 		// Wait for the backoff delay or context cancellation.
 		select {

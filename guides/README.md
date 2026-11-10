@@ -24,8 +24,13 @@ Read these before your first deploy:
 | --- | --- |
 | [Setting up cloud credentials](setup-credentials.md) | How serverku authenticates to GCP and DigitalOcean — what you need, how `serverku setup` works, where credentials live, and keeping work/personal accounts separate. |
 | [Choosing your setup](choosing-your-setup.md) | How to pick provider, region, VM size, spot, disk size, and `max_uptime_hours` — the "why these values?" decisions, tied to cost. |
+| [Editing projects](editing-projects.md) | Use `edit` or `reinit`, keep backups, apply changes, and add persistence to Kuma. |
 
 ## Pick a tutorial
+
+Testing PR #21? Follow [Install WordPress on DigitalOcean with PR #21](tutorial-wordpress-digitalocean-pr21.md)
+to finish a real WordPress installation, publish content, upload media, and
+verify the site survives VM replacement through an SSH tunnel.
 
 | Tutorial | App (language) | Provider | What it teaches |
 | --- | --- | --- | --- |

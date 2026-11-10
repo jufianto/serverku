@@ -6,6 +6,7 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/jufianto/serverku/internal/cloudlog"
 	"github.com/jufianto/serverku/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -21,9 +22,10 @@ var (
 )
 
 var (
-	configDir string
-	verbose   bool
-	store     *config.Store
+	configDir    string
+	verbose      bool
+	debugLogging bool
+	store        *config.Store
 )
 
 // resolveVersion assembles the user-facing version string, preferring
@@ -129,6 +131,16 @@ When done, tear it down. Pay only for storage when idle.`,
 				return fmt.Errorf("failed to initialize config store: %w", err)
 			}
 			store = s
+			settings, err := s.LoadSettings()
+			if err != nil {
+				return err
+			}
+			enabled := settings.Debug || verbose
+			// An explicit --debug=false overrides both the file and --verbose.
+			if cmd.Flags().Changed("debug") {
+				enabled = debugLogging
+			}
+			cloudlog.SetDebug(enabled)
 			return nil
 		},
 		SilenceUsage:  true,
@@ -137,11 +149,15 @@ When done, tear it down. Pay only for storage when idle.`,
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "config directory (default: ~/.serverku/)")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output and detailed cloud API logs")
+
+	rootCmd.PersistentFlags().BoolVar(&debugLogging, "debug", false, "show detailed cloud API and SSH retry logs (overrides config.yaml debug setting)")
 
 	// Register subcommands
 	rootCmd.AddCommand(
 		newInitCmd(),
+		newEditCmd(),
+		newReinitCmd(),
 		newSetupCmd(),
 		newCheckCmd(),
 		newUpCmd(),

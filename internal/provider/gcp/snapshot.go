@@ -2,12 +2,15 @@ package gcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 
 	"github.com/jufianto/serverku/internal/provider"
 	"google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 )
 
 // SnapshotDisk creates a snapshot of the named persistent disk (in the
@@ -74,4 +77,65 @@ func (g *GCPProvider) CreateDiskFromSnapshot(ctx context.Context, cfg provider.D
 		SizeGB:   created.SizeGb,
 		Provider: "gcp",
 	}, nil
+}
+
+func (g *GCPProvider) ListProjectSnapshots(ctx context.Context, q provider.SnapshotQuery) ([]provider.Snapshot, error) {
+	tracked := map[string]bool{}
+	for _, snap := range q.Tracked {
+		if snap.ID != "" {
+			tracked[snap.ID] = true
+		}
+	}
+	var result []provider.Snapshot
+	err := g.service.Snapshots.List(g.projectID).Context(ctx).Pages(ctx, func(list *compute.SnapshotList) error {
+		for _, s := range list.Items {
+			id := strconv.FormatUint(s.Id, 10)
+			matched := tracked[id]
+			for _, disk := range q.Disks {
+				source := fmt.Sprintf("projects/%s/zones/%s/disks/%s", g.projectID, g.zone, disk.Name)
+				// SourceDiskId prevents matching a different disk recreated under the same name.
+				if disk.Name != "" && (s.SourceDisk == source || strings.HasSuffix(s.SourceDisk, "/"+source)) && (disk.ID == "" || s.SourceDiskId == disk.ID) {
+					matched = true
+				}
+			}
+			if matched {
+				result = append(result, provider.Snapshot{ID: id, Name: s.Name})
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list project snapshots: %w", err)
+	}
+	return result, nil
+}
+
+func (g *GCPProvider) DeleteSnapshot(ctx context.Context, snapshot provider.Snapshot) error {
+	if snapshot.Name == "" || snapshot.ID == "" {
+		return fmt.Errorf("snapshot name and ID are required")
+	}
+	existing, err := g.service.Snapshots.Get(g.projectID, snapshot.Name).Context(ctx).Do()
+	if snapshotNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect snapshot: %w", err)
+	}
+	if strconv.FormatUint(existing.Id, 10) != snapshot.ID {
+		return fmt.Errorf("snapshot %q identity changed; refusing deletion", snapshot.Name)
+	}
+	log.Printf("[gcp] deleting snapshot %q (id: %s)", snapshot.Name, snapshot.ID)
+	op, err := g.service.Snapshots.Delete(g.projectID, snapshot.Name).Context(ctx).Do()
+	if snapshotNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("delete snapshot: %w", err)
+	}
+	return g.waitForGlobalOperation(ctx, g.projectID, op.Name)
+}
+
+func snapshotNotFound(err error) bool {
+	var apiErr *googleapi.Error
+	return errors.As(err, &apiErr) && apiErr.Code == 404
 }

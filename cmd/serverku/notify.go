@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"text/tabwriter"
 	"time"
 
 	"github.com/charmbracelet/huh"
@@ -19,11 +20,74 @@ const chatDiscoveryTimeout = 2 * time.Minute
 
 func newNotifyCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "notify",
-		Short: "Set up and test notification channels",
+		Use:     "notify [project-name]",
+		Short:   "Show, set up, and test notification channels",
+		Example: "  serverku notify kuma\n  serverku notify list kuma\n  serverku notify setup kuma\n  serverku notify test kuma",
+		Args:    cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			return listNotificationChannels(cmd, args[0])
+		},
 	}
-	cmd.AddCommand(newNotifySetupCmd(), newNotifyTestCmd())
+	cmd.AddCommand(newNotifyListCmd(), newNotifySetupCmd(), newNotifyTestCmd())
 	return cmd
+}
+
+func newNotifyListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list <project-name>",
+		Short: "Show configured notification channels without sending messages",
+		Args:  cobra.ExactArgs(1),
+		RunE:  func(cmd *cobra.Command, args []string) error { return listNotificationChannels(cmd, args[0]) },
+	}
+}
+
+func listNotificationChannels(cmd *cobra.Command, name string) error {
+	cfg, err := store.LoadProject(name)
+	if err != nil {
+		return err
+	}
+	n := cfg.Notifications
+	out := cmd.OutOrStdout()
+	fmt.Fprintf(out, "Notification channels for %s (saved settings):\n", name)
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "CHANNEL\tSTATUS\tHEARTBEAT")
+	heartbeat := func(hours int) string {
+		if hours > 0 {
+			return fmt.Sprintf("every %dh (configured)", hours)
+		}
+		return "off"
+	}
+	ntfyStatus := "not configured"
+	if n.Ntfy.Topic != "" {
+		ntfyStatus = "configured"
+	}
+	fmt.Fprintf(w, "ntfy\t%s\t%s\n", ntfyStatus, heartbeat(n.Ntfy.HeartbeatHours))
+	telegramStatus := "not configured"
+	switch {
+	case n.Telegram.BotToken != "" && n.Telegram.ChatID != "":
+		telegramStatus = "configured"
+	case n.Telegram.BotToken != "":
+		telegramStatus = "incomplete: missing chat_id"
+	case n.Telegram.ChatID != "":
+		telegramStatus = "incomplete: missing bot_token"
+	}
+	fmt.Fprintf(w, "telegram\t%s\t%s\n", telegramStatus, heartbeat(n.Telegram.HeartbeatHours))
+	slackStatus := "not configured"
+	if n.Slack.WebhookURL != "" {
+		slackStatus = "configured"
+	}
+	fmt.Fprintf(w, "slack\t%s\t-\n", slackStatus)
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	if n.Ntfy.Topic != "" {
+		fmt.Fprintf(out, "\nSubscribe to ntfy: serverku ntfy %s\n", name)
+	}
+	fmt.Fprintf(out, "\nSet up: serverku notify setup %s\nTest delivery: serverku notify test %s\n", name, name)
+	return nil
 }
 
 func newNotifySetupCmd() *cobra.Command {
@@ -215,6 +279,7 @@ func newNotifyTestCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "test <project-name>",
 		Short: "Send a test notification to every configured channel",
+		Long:  "Send a test notification to every configured channel.\nInspect saved channels first with 'serverku notify list <project-name>'.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]

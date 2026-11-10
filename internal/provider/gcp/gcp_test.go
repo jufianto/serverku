@@ -293,3 +293,7 @@ func TestCreateVM_NoMaxRunDurationByDefault(t *testing.T) {
 		t.Errorf("MaxRunDuration should be unset without max_uptime, got %+v", insertBody.Scheduling.MaxRunDuration)
 	}
 }
+
+// Compile-time assertion that the provider implements the optional
+// ComponentLister capability used by `serverku status`.
+var _ provider.ComponentLister = (*GCPProvider)(nil)

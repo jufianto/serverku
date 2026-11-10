@@ -3,6 +3,7 @@ package digitalocean
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -106,5 +107,64 @@ func TestCreateDiskFromSnapshot_UnknownSnapshot(t *testing.T) {
 
 	if _, err := p.CreateDiskFromSnapshot(context.Background(), provider.DiskConfig{Name: "d", Zone: "sgp1", SizeGB: 20}, "nope"); err == nil {
 		t.Fatal("expected error for unknown snapshot")
+	}
+}
+
+func TestProjectSnapshotsPaginationAndSourceIdentity(t *testing.T) {
+	pages := 0
+	p := pricingTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v2/snapshots" || r.URL.Query().Get("resource_type") != "volume" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL)
+		}
+		pages++
+		if r.URL.Query().Get("page") == "2" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"snapshots": []godo.Snapshot{{ID: "old", Name: "custom-old", ResourceID: "deleted-volume"}}})
+		} else {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"snapshots": []godo.Snapshot{{ID: "ours", Name: "custom", ResourceID: "volume-1"}, {ID: "other", Name: "serverku-demo-copy", ResourceID: "unrelated-volume"}},
+				"links":     map[string]any{"pages": map[string]string{"next": "http://example.test/v2/snapshots?page=2", "last": "http://example.test/v2/snapshots?page=2"}},
+			})
+		}
+	})
+	snaps, err := p.ListProjectSnapshots(context.Background(), provider.SnapshotQuery{Disks: []provider.DiskIdentity{{ID: "volume-1"}}, Tracked: []provider.Snapshot{{ID: "old", Name: "custom-old"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pages != 2 || len(snaps) != 2 || snaps[0].ID != "ours" || snaps[1].ID != "old" {
+		t.Fatalf("wrong project snapshots: %+v (pages=%d)", snaps, pages)
+	}
+}
+
+func TestDeleteSnapshotMissingIsIdempotentAndFailuresSurface(t *testing.T) {
+	for _, status := range []int{204, 404, 403} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			p := pricingTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodDelete || r.URL.Path != "/v2/snapshots/snapshot-id" {
+					t.Fatalf("wrong deletion: %s %s", r.Method, r.URL)
+				}
+				w.WriteHeader(status)
+			})
+			err := p.DeleteSnapshot(context.Background(), provider.Snapshot{ID: "snapshot-id", Name: "custom"})
+			if (err != nil) != (status == 403) {
+				t.Fatalf("status %d, error %v", status, err)
+			}
+		})
+	}
+}
+
+func TestDeleteDiskByIDTargetsRecordedVolumeAndHandlesRetry(t *testing.T) {
+	for _, status := range []int{204, 404, 403} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			p := pricingTestProvider(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodDelete || r.URL.Path != "/v2/volumes/recorded-volume-id" {
+					t.Errorf("cleanup must target the recorded UUID: %s %s", r.Method, r.URL)
+				}
+				w.WriteHeader(status)
+			})
+			err := p.DeleteDiskByID(context.Background(), "recorded-volume-id")
+			if (err != nil) != (status == 403) {
+				t.Fatalf("status %d, error %v", status, err)
+			}
+		})
 	}
 }

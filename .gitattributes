@@ -1,0 +1,4 @@
+# The ReportLab guide is ASCII85 text inside but must be treated as binary.
+*.pdf binary
+# Upstream SIL OFL texts are kept byte-for-byte, including trailing spaces.
+OFL-*.txt -whitespace

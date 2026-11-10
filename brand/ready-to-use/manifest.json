@@ -1,0 +1,486 @@
+{
+  "brand": "serverku",
+  "date": "2026-11-10",
+  "files": {
+    "README.md": {
+      "sha256": "a1a506fe3be54f27d030f907cf94b62cab68ce235fa855837ff4c9b36c72a238",
+      "bytes": 3291
+    },
+    "brand-information.md": {
+      "sha256": "aa39c08d0fbef04bee9e176bb40fc759bb68951776102de9f63cdd31a52d8487",
+      "bytes": 6003
+    },
+    "icons/apple-touch-icon.png": {
+      "sha256": "8ff5b4e173c6a28490ebaf6a8f26d8b9681c553f58c2aa28822721f516449d9a",
+      "bytes": 8441
+    },
+    "icons/favicon-32.png": {
+      "sha256": "8510e2cfd761a1ab9eff3fb95282f32ab0161036d9468ba11ac4e2671d34a200",
+      "bytes": 1323
+    },
+    "icons/serverku-app-dark-1024.png": {
+      "sha256": "0ef6c73e84e989185f7996b83439c0ccece9f380f068ab762faab2e1c21867c2",
+      "bytes": 58025
+    },
+    "icons/serverku-app-dark-128.png": {
+      "sha256": "a9d7bf1de8998f06f7e2ef8b351b4a59af4a74cda5a49931ba5b545c96149dbb",
+      "bytes": 6019
+    },
+    "icons/serverku-app-dark-16.png": {
+      "sha256": "0debf09326c0711c8c357083d62c164afb6e37e8488ca6d5ee8c6541e78995a3",
+      "bytes": 658
+    },
+    "icons/serverku-app-dark-180.png": {
+      "sha256": "8ff5b4e173c6a28490ebaf6a8f26d8b9681c553f58c2aa28822721f516449d9a",
+      "bytes": 8441
+    },
+    "icons/serverku-app-dark-192.png": {
+      "sha256": "08c300a82b14067a712c8ce237cdb8594587e8efc94c88d081ffee2c389ca6a4",
+      "bytes": 9331
+    },
+    "icons/serverku-app-dark-24.png": {
+      "sha256": "c99fd469bfea4c2adf8b9c9f55d6dcc809f82dcdf4508b05241af24c28e078db",
+      "bytes": 1027
+    },
+    "icons/serverku-app-dark-256.png": {
+      "sha256": "debe26b679f71252e9d68c4ff1646f8da3f6147f49ceb7c5b27524b6cb2c7e36",
+      "bytes": 12667
+    },
+    "icons/serverku-app-dark-32.png": {
+      "sha256": "8510e2cfd761a1ab9eff3fb95282f32ab0161036d9468ba11ac4e2671d34a200",
+      "bytes": 1323
+    },
+    "icons/serverku-app-dark-48.png": {
+      "sha256": "b0984a127c3695077d2ee0202a7e072356756a14c44a87b957bf65ed90f7827f",
+      "bytes": 2024
+    },
+    "icons/serverku-app-dark-512.png": {
+      "sha256": "e466046803b98bdee616dd7b4c9b1049df9309045a5f1a256690911e538a8aaf",
+      "bytes": 27006
+    },
+    "icons/serverku-app-dark-64.png": {
+      "sha256": "365aa7b4d9a5fb03f24092954ecf5149bf85493b01243536f01f74231dace393",
+      "bytes": 2678
+    },
+    "icons/serverku-app-light-1024.png": {
+      "sha256": "eba1706f7b698388aa66f307f76552d3848348f48b6821e82428814ddecea4a4",
+      "bytes": 52858
+    },
+    "icons/serverku-app-light-128.png": {
+      "sha256": "b1a175ae17081d964e1c838c2247dbedcbd3ebb8659a688c602e38282eb4e96f",
+      "bytes": 5332
+    },
+    "icons/serverku-app-light-16.png": {
+      "sha256": "56568dab245c8f651e8e0d64b750ec5262cc9d7d4f4df007a1ad0e6dd3d6891e",
+      "bytes": 584
+    },
+    "icons/serverku-app-light-180.png": {
+      "sha256": "31962e166facbd333be58147048f98e9649b7104116246560a6a668295a7bdcb",
+      "bytes": 7583
+    },
+    "icons/serverku-app-light-192.png": {
+      "sha256": "a5cdecd09e49392e32b81fd227e1eaa57ee7e701b4a03e6397d9ede9cb6fef0f",
+      "bytes": 8250
+    },
+    "icons/serverku-app-light-24.png": {
+      "sha256": "773c168766844e4563b871d4c3d950f356d5377c01fbd381af2a3e7703b8e468",
+      "bytes": 872
+    },
+    "icons/serverku-app-light-256.png": {
+      "sha256": "156b834034a86b4cd8439e5dc350c37da8aae74829b2dd2ec8d16821cf70777e",
+      "bytes": 11448
+    },
+    "icons/serverku-app-light-32.png": {
+      "sha256": "35cf15226f64a77b8536295fcf9147205e0b4ce457477c7eeffdceae88abe3d2",
+      "bytes": 1134
+    },
+    "icons/serverku-app-light-48.png": {
+      "sha256": "2e974bf2cb23de7b16528c507bca1ff3163a54512e9f1e31b6fc13a31553f456",
+      "bytes": 1858
+    },
+    "icons/serverku-app-light-512.png": {
+      "sha256": "ffc0a8c687f0ba2ce04a90a9bc7b5d64a2c2441eda7d5b79ebbe775108ca602e",
+      "bytes": 24360
+    },
+    "icons/serverku-app-light-64.png": {
+      "sha256": "33f44eeaae9cad8db230602e2bc4907bba23443b1dad6c3b83484162e663e57d",
+      "bytes": 2401
+    },
+    "icons/serverku-dark.ico": {
+      "sha256": "e81bcc577c11278437c4e9e6442a9140749dc91a57e1862f88604ddfcec20ece",
+      "bytes": 26514
+    },
+    "icons/serverku-light.ico": {
+      "sha256": "385fe9fcac8459014b6dfd387be625a64fce82b01adcf9ade3bac1748f785fdb",
+      "bytes": 23747
+    },
+    "icons/serverku-symbol-black-16.png": {
+      "sha256": "7b0b6356c6f41533439c4bab40ee0d2b92b48bd737a97853e836cd508b0f6854",
+      "bytes": 311
+    },
+    "icons/serverku-symbol-black-24.png": {
+      "sha256": "acbef7158b452d7cb9c329cfaa99a3a38c155e5bbe0143bbac688204692ab5ad",
+      "bytes": 458
+    },
+    "icons/serverku-symbol-black-32.png": {
+      "sha256": "aa8036289e86697f15cd0090337b63fdf1f78b216f2c1d78fe820c749aaf6b28",
+      "bytes": 571
+    },
+    "icons/serverku-symbol-black-48.png": {
+      "sha256": "0063db5cbc12d6736c64384eceef587f2ede03c686aea5879884825716399a8d",
+      "bytes": 844
+    },
+    "icons/serverku-symbol-black-64.png": {
+      "sha256": "6273d76fc80d1c52c275770d07eafb549bd9d774347adfe11270b067e0ecf7ac",
+      "bytes": 1114
+    },
+    "icons/serverku-symbol-ink-16.png": {
+      "sha256": "27c7d1754cfb12ff08f3002935f8281b2cc642369d09fba093ba1cbd6ba6c5d9",
+      "bytes": 427
+    },
+    "icons/serverku-symbol-ink-24.png": {
+      "sha256": "3b0e7fde484391103a5c977149023fea474b54dac2f3f8a0a76cbb43a190a25d",
+      "bytes": 619
+    },
+    "icons/serverku-symbol-ink-32.png": {
+      "sha256": "cec467f429967c945e745238b83a4c9c3d51c9d646c81d544b1ec01aa48f55d0",
+      "bytes": 700
+    },
+    "icons/serverku-symbol-ink-48.png": {
+      "sha256": "e0a55319f10864179eb3a0884324383783a549e43a41c740a8bc5abfa3613ef9",
+      "bytes": 923
+    },
+    "icons/serverku-symbol-ink-64.png": {
+      "sha256": "21a4bed48513643e9b2adbf5b32c8c28310fff26591c872d18972622e02247e5",
+      "bytes": 1359
+    },
+    "icons/serverku-symbol-white-16.png": {
+      "sha256": "e67d9f5b97bfdb39e887df85177af803ff9233aa2a25418b5a0d82381d63dcfb",
+      "bytes": 315
+    },
+    "icons/serverku-symbol-white-24.png": {
+      "sha256": "cb3c1b72207232472dc27d62c0cca7154fe2a4aac435bc3fe3ba6a3a9e9ed876",
+      "bytes": 469
+    },
+    "icons/serverku-symbol-white-32.png": {
+      "sha256": "b2c23ab46f69496dd6449ab0cee7add83a192ec19f0cb0cec2797adc4f43ffb6",
+      "bytes": 593
+    },
+    "icons/serverku-symbol-white-48.png": {
+      "sha256": "e3741801e23a4f7247d372ff1ec94a19debcbebd36e977e1ca2a1ea25ae116a4",
+      "bytes": 830
+    },
+    "icons/serverku-symbol-white-64.png": {
+      "sha256": "009966cb39315f47ba54b2a28c15511953e11c9646ce97fbf8832a69ee176ab1",
+      "bytes": 1384
+    },
+    "icons/serverku.icns": {
+      "sha256": "5ac648bdacf8f34c294e2d92fdae2d90f62c35c8aed8b776d321452ead52d88a",
+      "bytes": 126292
+    },
+    "icons/serverku.iconset/icon_128x128.png": {
+      "sha256": "a9d7bf1de8998f06f7e2ef8b351b4a59af4a74cda5a49931ba5b545c96149dbb",
+      "bytes": 6019
+    },
+    "icons/serverku.iconset/icon_128x128@2x.png": {
+      "sha256": "debe26b679f71252e9d68c4ff1646f8da3f6147f49ceb7c5b27524b6cb2c7e36",
+      "bytes": 12667
+    },
+    "icons/serverku.iconset/icon_16x16.png": {
+      "sha256": "0debf09326c0711c8c357083d62c164afb6e37e8488ca6d5ee8c6541e78995a3",
+      "bytes": 658
+    },
+    "icons/serverku.iconset/icon_16x16@2x.png": {
+      "sha256": "8510e2cfd761a1ab9eff3fb95282f32ab0161036d9468ba11ac4e2671d34a200",
+      "bytes": 1323
+    },
+    "icons/serverku.iconset/icon_256x256.png": {
+      "sha256": "debe26b679f71252e9d68c4ff1646f8da3f6147f49ceb7c5b27524b6cb2c7e36",
+      "bytes": 12667
+    },
+    "icons/serverku.iconset/icon_256x256@2x.png": {
+      "sha256": "e466046803b98bdee616dd7b4c9b1049df9309045a5f1a256690911e538a8aaf",
+      "bytes": 27006
+    },
+    "icons/serverku.iconset/icon_32x32.png": {
+      "sha256": "8510e2cfd761a1ab9eff3fb95282f32ab0161036d9468ba11ac4e2671d34a200",
+      "bytes": 1323
+    },
+    "icons/serverku.iconset/icon_32x32@2x.png": {
+      "sha256": "365aa7b4d9a5fb03f24092954ecf5149bf85493b01243536f01f74231dace393",
+      "bytes": 2678
+    },
+    "icons/serverku.iconset/icon_512x512.png": {
+      "sha256": "e466046803b98bdee616dd7b4c9b1049df9309045a5f1a256690911e538a8aaf",
+      "bytes": 27006
+    },
+    "icons/serverku.iconset/icon_512x512@2x.png": {
+      "sha256": "0ef6c73e84e989185f7996b83439c0ccece9f380f068ab762faab2e1c21867c2",
+      "bytes": 58025
+    },
+    "icons/site.webmanifest": {
+      "sha256": "99edad5809e06800d0e4ecb57da79554d3397afb2baf5fc9bad7e9771fa8d596",
+      "bytes": 393
+    },
+    "png/serverku-app-icon-dark.png": {
+      "sha256": "b9d82f9e441212d961200137a8dcbf0c3e8b7d42a8e3def1b5fb8afd2a75c035",
+      "bytes": 71006
+    },
+    "png/serverku-app-icon-light.png": {
+      "sha256": "88ad44b8b01dec1332af7856c519ddf4ce932277dedc18cfab536be7756b6e24",
+      "bytes": 67134
+    },
+    "png/serverku-horizontal-black.png": {
+      "sha256": "a35d16e817882825a1f1d6f3c68dd4249678aa38f64b54f8c4fab070faf9e249",
+      "bytes": 41875
+    },
+    "png/serverku-horizontal-ink.png": {
+      "sha256": "b8dfb93c2f36af1a6c790fa181d30a2d5ff737e28195848de7af35c14954c4c4",
+      "bytes": 50030
+    },
+    "png/serverku-horizontal-primary.png": {
+      "sha256": "b584d8702760b5587126b514278eb5d91f8a90e5bdaadae464ab9d0adee53c48",
+      "bytes": 50089
+    },
+    "png/serverku-horizontal-white.png": {
+      "sha256": "5d28a220860d49493c9a2b850dcb2e2844b4bb1fae39197997768648d44c4561",
+      "bytes": 52465
+    },
+    "png/serverku-mark-black.png": {
+      "sha256": "105acd562d8476d3c0fa98f7723bc935fb081d9516a7bb567242d2898001e89d",
+      "bytes": 51622
+    },
+    "png/serverku-mark-ink.png": {
+      "sha256": "b4b822c203b280f56f73b902fef0c50c7b0b52fd54bfddf87574d5a3c90bfab2",
+      "bytes": 61847
+    },
+    "png/serverku-mark-micro-black.png": {
+      "sha256": "a94bc83e6775cafd7070b99463f230b16f820a629d22c9a8297a8d55d618257e",
+      "bytes": 55382
+    },
+    "png/serverku-mark-micro-ink.png": {
+      "sha256": "c3388ddae95f89c1c9a221ebf65c5edc0b891ca9fa08b95e25f21a269ecd6aaf",
+      "bytes": 65790
+    },
+    "png/serverku-mark-micro-white.png": {
+      "sha256": "ab8e040d0be981e7e55688381011f80fe6540275eef904f24dfdfdfb57f316a8",
+      "bytes": 65531
+    },
+    "png/serverku-mark-primary.png": {
+      "sha256": "c514bf3b89da4bde2394676687756b96dc127dc3e21fc398e28843b97c44c414",
+      "bytes": 61840
+    },
+    "png/serverku-mark-teal.png": {
+      "sha256": "70201f00f0bb458c6c251738b8b50caa22ed3970fa7a8e8424954f9acebf4b8f",
+      "bytes": 62070
+    },
+    "png/serverku-mark-white.png": {
+      "sha256": "f271f726952d577932ac68d909799437a1a87bac10df6bb3aa81d3cef9b0d351",
+      "bytes": 61432
+    },
+    "png/serverku-stacked-ink.png": {
+      "sha256": "e2661a5949de6f060acf232aeb8d2bec82de93cf705d1c9ebd0c5aecff92a799",
+      "bytes": 73946
+    },
+    "png/serverku-stacked-primary.png": {
+      "sha256": "6bb4aaf75406132d1e7e4601a1c6b98d8b633d4eea27fa5333a8f24aabc532cf",
+      "bytes": 74121
+    },
+    "png/serverku-stacked-white.png": {
+      "sha256": "7fa670b3a4966066c403f1576ecac52511d88598785446d114d81cb7c5396660",
+      "bytes": 75027
+    },
+    "png/serverku-wordmark-black.png": {
+      "sha256": "3bc2c470c0c82585586ab2390b81dc745f9f801061c6003bb857c0a1c43ec12d",
+      "bytes": 42733
+    },
+    "png/serverku-wordmark-ink.png": {
+      "sha256": "6b5d9bc9930ed647159c671e0168005f014ac18af79ce9c9bd38f962d3bf8f8c",
+      "bytes": 47912
+    },
+    "png/serverku-wordmark-white.png": {
+      "sha256": "9799f3bb7ce8ac42108ab3cf7f03a678bcadab5fd051d81e5b3a36a066c32fa6",
+      "bytes": 53036
+    },
+    "reference/app-alignment.md": {
+      "sha256": "dc14ebcbfc6f7bf8ae1e5a08cbfcd7637f6babcf35c92ab1d3e288a93f5d7de7",
+      "bytes": 1640
+    },
+    "reference/brand-tokens.json": {
+      "sha256": "ff982a65709670aa818f2994b64e15ad4be1583de1207dcbe752ebeb8f2888ff",
+      "bytes": 825
+    },
+    "reference/curve-detail-check.png": {
+      "sha256": "5134cd81241e39de1d8a4a7df45b751d95b2c1f017778ec0c65345041abf9633",
+      "bytes": 55067
+    },
+    "reference/design-rationale.png": {
+      "sha256": "7d648543fef783c3108eb53a6ce417754efa79be37259b6b5c0470c370eceeee",
+      "bytes": 61751
+    },
+    "reference/pdf-review.json": {
+      "sha256": "ffaf95f91ee4484273d72d041df8ec28a0f4b5e5e4e9c0d02cd33d9e5dec86d4",
+      "bytes": 511
+    },
+    "reference/provenance.json": {
+      "sha256": "41429dc4d69a20592737d7ebee08ea07d5766f681f25d5160ea898ac1f2ec5c7",
+      "bytes": 1914
+    },
+    "reference/small-size-check.png": {
+      "sha256": "19d6d25f355ec2b179e39e7df1643627a69055be39d41ce4a19671bee4e5ec52",
+      "bytes": 43470
+    },
+    "reference/validation.json": {
+      "sha256": "0ab277bdd3e62e47d72bfc8ac3798556d4a7e2148a3ecbcf6087705489c6e5bd",
+      "bytes": 816
+    },
+    "serverku-brand-guide.pdf": {
+      "sha256": "623fc1ced767b9237b7d093b5ee535ce046e20c58fba8ce23f80abd200eef8d9",
+      "bytes": 494160
+    },
+    "serverku-overview.png": {
+      "sha256": "859dd584a0e23468554fe7da8652d2c0b410e2473b784dbe1afd8cc7391abfe1",
+      "bytes": 109239
+    },
+    "source/README.md": {
+      "sha256": "98ee4a7e6acd8a33442f4ec43a47c34e4a145e1ff2d6b5c4bbe82dc11b0701b6",
+      "bytes": 947
+    },
+    "source/app-snapshots/README.md": {
+      "sha256": "c046fb6c414f8233570fe259e55f35182f3c4b03b5937f55b27c277a0136cc4c",
+      "bytes": 29128
+    },
+    "source/app-snapshots/lifecycle.go.txt": {
+      "sha256": "ef9e0c33ad64c1fe741271ba9b3e48de1d795d6b048b363b05c7a900a8658056",
+      "bytes": 9941
+    },
+    "source/build_kit.py": {
+      "sha256": "4a982fb111c761d3fff5f6a5b79890db4c090ab8c06b7d580a4d5e61b54730f2",
+      "bytes": 17959
+    },
+    "source/fonts/OFL-PlusJakartaSans.txt": {
+      "sha256": "995c7199cab65954f545996326755daee7b63cc6b42b06c13da1f9502ab08a99",
+      "bytes": 4402
+    },
+    "source/fonts/OFL-Sora.txt": {
+      "sha256": "ba0b9729c9428ba79a0459ab8ec575791b51509dbec213e383d0316d37fec299",
+      "bytes": 4385
+    },
+    "source/fonts/PlusJakartaSans-400.ttf": {
+      "sha256": "02a20292cad94f8ec5850b8217818bada6758d1ef8212253a3030d993af0589a",
+      "bytes": 29468
+    },
+    "source/fonts/PlusJakartaSans-600.ttf": {
+      "sha256": "7f84de32c933a517604990b80d24406e88868767f7ee3ba3b4ad3e3870cc5a80",
+      "bytes": 29532
+    },
+    "source/fonts/Sora-600.ttf": {
+      "sha256": "9b2bb0cb1d550b8b28f69d40e20374f7e608a42078ca5d45804f2fc85cb98111",
+      "bytes": 58604
+    },
+    "source/geometry.py": {
+      "sha256": "41bff4a10c615582b280064a93df2eaf026f0fb08fe2a1136271367dc5d2e003",
+      "bytes": 1554
+    },
+    "source/package-lock.json": {
+      "sha256": "1a8b34298f2e1d7e647faa5179b21f9e571507a0e44c938939993a3e9b43f690",
+      "bytes": 7261
+    },
+    "source/package.json": {
+      "sha256": "629cc241e415d19f16935dedc723c8feaab7d6a322cd85120a69c28fd29398e4",
+      "bytes": 136
+    },
+    "source/render.mjs": {
+      "sha256": "b1f57968ee867d651e6b2c83d46da0c8e6f1173f1f5391db2939e9724a8772b5",
+      "bytes": 375
+    },
+    "source/requirements.txt": {
+      "sha256": "25ccdb8b30ded90f2b66a1a4eb583d867cc320942af2f31ffe67e8aa7903511f",
+      "bytes": 63
+    },
+    "source/verify_kit.py": {
+      "sha256": "de787f446966cca5f3ba2245a826fd8fb8389ee2454458c1f049e0701f322020",
+      "bytes": 5460
+    },
+    "svg/serverku-app-icon-dark.svg": {
+      "sha256": "d9bd4b9ae132c2f6e157a02eb7ccb277c1ca76441d58d605b57287610f00fc82",
+      "bytes": 1009
+    },
+    "svg/serverku-app-icon-light.svg": {
+      "sha256": "67cf08bdd1c36055e0f643e4432ee2985dda24a1d6b0a84089ac3dfb624ed27f",
+      "bytes": 1011
+    },
+    "svg/serverku-horizontal-black.svg": {
+      "sha256": "78213d42c0c66c68c910f42026bb8c894080abdaabc054358de318473df4c940",
+      "bytes": 3778
+    },
+    "svg/serverku-horizontal-ink.svg": {
+      "sha256": "9064bc3ececa230f0fcc41a5cf0a9ca31306776cf74014ef414b268fb908b294",
+      "bytes": 3774
+    },
+    "svg/serverku-horizontal-primary.svg": {
+      "sha256": "b6ccf1b313ac03edb86fc7393078265509f3f8b0729a1ddb2dde49fb83bf731b",
+      "bytes": 3782
+    },
+    "svg/serverku-horizontal-white.svg": {
+      "sha256": "7670081678a5e0bbf8047adf11046f577e2f5ae9e0e65c381d9f20653cffe7d6",
+      "bytes": 3778
+    },
+    "svg/serverku-mark-black.svg": {
+      "sha256": "2f326c7f006fd534d82ba92707cfdffd1370c5881a3b8f5a610da9c2788f387c",
+      "bytes": 1011
+    },
+    "svg/serverku-mark-ink.svg": {
+      "sha256": "fec955970a5dfe772f81b8392a8b8f26879f5b591c348b87705d6976e82975ba",
+      "bytes": 1007
+    },
+    "svg/serverku-mark-micro-black.svg": {
+      "sha256": "9924b07c170cd5eb019572e5e4915febf66da4b0d79afb65aeb1248744b52bcd",
+      "bytes": 908
+    },
+    "svg/serverku-mark-micro-ink.svg": {
+      "sha256": "7b3643b5ec262204bb119f5299d913b3c22f07fb85242e217bc4f9b8b6fb5a63",
+      "bytes": 904
+    },
+    "svg/serverku-mark-micro-white.svg": {
+      "sha256": "275ea549ba10dada0d5da7cc311a0a404455eb9b63ac9c1779cbabb9d27debb8",
+      "bytes": 908
+    },
+    "svg/serverku-mark-primary.svg": {
+      "sha256": "2626bc7821dd3dea682d2218464bbcbc1ad286b70c173666e6b41c85e6432193",
+      "bytes": 1015
+    },
+    "svg/serverku-mark-teal.svg": {
+      "sha256": "6329a1b784d6e0f41f0aa85b02e67f8cf7fc47822874fd847d9219137e34d172",
+      "bytes": 1009
+    },
+    "svg/serverku-mark-white.svg": {
+      "sha256": "12de562b60b1c134eeec535bf8e7bcf539dea9f392419a0d445015b085aea4bf",
+      "bytes": 1011
+    },
+    "svg/serverku-stacked-ink.svg": {
+      "sha256": "cc24e4902bc48732faba039aaabc1e3090b6e85ee4512fcd19cbc782d1f853c7",
+      "bytes": 3774
+    },
+    "svg/serverku-stacked-primary.svg": {
+      "sha256": "0215a1fa62ed9a046dd1e5719ddefe3df4c4dc508c3cc295b2625a099bc0c660",
+      "bytes": 3782
+    },
+    "svg/serverku-stacked-white.svg": {
+      "sha256": "68db84ae01899f2fcc9b3dfce1cda361a85a6400e3cdaf4f0db28892f3c64ac4",
+      "bytes": 3778
+    },
+    "svg/serverku-wordmark-black.svg": {
+      "sha256": "82a368f2fb245109d51272339502f18a3ad9281fcc96be12b604e44219239a3e",
+      "bytes": 2890
+    },
+    "svg/serverku-wordmark-ink.svg": {
+      "sha256": "d8cc623f908f6d37dd44b52008911c53e05bfd6812750827b1adba2e203161ea",
+      "bytes": 2886
+    },
+    "svg/serverku-wordmark-white.svg": {
+      "sha256": "9ec0a779cbe2c617df0ac57cfa1adfe730e695a990c0192f83fec0fd80f5a6aa",
+      "bytes": 2890
+    }
+  }
+}

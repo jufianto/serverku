@@ -14,3 +14,6 @@
 
 # Python brand tooling caches
 __pycache__/
+
+# Local Python virtualenv for brand tooling
+.venv/

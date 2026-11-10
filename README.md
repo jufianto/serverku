@@ -1,4 +1,13 @@
-# serverku
+<h1 align="center">
+  <br>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/kit/svg/serverku-horizontal-white.svg">
+    <img src="brand/kit/svg/serverku-horizontal-primary.svg" alt="serverku" width="320">
+  </picture>
+  <br>
+</h1>
+
+<br>
 
 `serverku` is an on-demand cloud VM orchestrator for Docker Compose projects.
 

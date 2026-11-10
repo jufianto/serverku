@@ -776,6 +776,14 @@ See [`docs/development.md`](docs/development.md) for the contributor guide and o
 - [ ] `max_uptime` for DigitalOcean — needs a client-side scheduler since DO
   has no native auto-delete; GCP is supported today.
 
+## Branding
+
+Approved artwork, licensed fonts and the maintained builder live in
+[`brand/kit/`](brand/kit/README.md). Read the [brand reference](docs/reference/brand.md)
+and [project brand skill](.claude/skills/serverku-brand/SKILL.md) for usage and changes.
+`make brand-check` enforces palette coverage, SVG fill roles and kit integrity.
+Terminal fonts and colours remain user-controlled.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) — bug fixes, tutorials, and new

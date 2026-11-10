@@ -19,9 +19,16 @@ go test ./internal/orchestrator        # one package
 go test ./internal/orchestrator -run TestUpWithStorage   # one test
 ```
 
-There is no Makefile, linter config, formatter config, or CI workflow. Verification
-order: targeted `go test` for touched packages → `go test ./...` → a build if CLI
-code changed. Go 1.23+.
+A Makefile, golangci-lint config and GitHub CI are present. Run `make check`
+before a PR; CI also runs race tests and lint. Verification order: targeted
+`go test` for touched packages → `go test ./...` → a build if CLI code changed.
+Go 1.23+; brand checks require Python 3.11+.
+
+For graphical identity or future frontend work, read [the brand reference](docs/reference/brand.md),
+[serverku-brand skill](.claude/skills/serverku-brand/SKILL.md), [skill index](.claude/skills/README.md)
+and [review rules](docs/review.md). `brand/tokens.json` is the canonical palette.
+Run `make brand-check`; kit changes also require `make brand-verify` and
+`make brand-rebuild`. Preserve terminal appearance.
 
 Test locally against a throwaway config dir to avoid touching `~/.serverku/`:
 

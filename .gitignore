@@ -11,3 +11,6 @@
 
 # macOS
 .DS_Store
+
+# Python brand tooling caches
+__pycache__/

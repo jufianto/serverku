@@ -1,3 +1,5 @@
+> Historical snapshot of the original proposal (2026-11-10). Not current brand policy or runtime documentation.
+
 # Serverku source alignment
 
 As of 2026-11-10. Audited the repository README, agent notes and lifecycle command descriptions. Read-only README and lifecycle source snapshots are included for product context; no runtime data or credentials were accessed.

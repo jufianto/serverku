@@ -4,7 +4,7 @@ import hashlib
 import json
 import shutil
 import subprocess
-import zipfile
+from string import Template
 from PIL import Image, ImageDraw, ImageFont
 from fontTools.ttLib import TTFont
 from fontTools.pens.svgPathPen import SVGPathPen
@@ -13,7 +13,8 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont as RLFont
 from reportlab.lib.colors import HexColor
 from reportlab.lib.utils import ImageReader
-from geometry import mark, INK, TEAL, WHITE
+from geometry import mark
+from palette import REPO, TOKENS, NAME, INK, TEAL, WHITE, BLACK, MIST, MUTED, BORDER, WORDMARK, DARK_TEXT
 
 SOURCE=Path(__file__).resolve().parent
 ROOT=SOURCE.parent
@@ -22,8 +23,6 @@ FONT=SOURCE/'fonts/Sora-600.ttf'
 REGULAR=SOURCE/'fonts/PlusJakartaSans-400.ttf'
 SEMI=SOURCE/'fonts/PlusJakartaSans-600.ttf'
 DATE='2026-11-10'
-MIST='#F2F8F7'
-MUTED='#536B6E'
 jobs=[]
 
 
@@ -34,13 +33,13 @@ def write(name,text):
     p=ROOT/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text,encoding='utf-8');return p
 
 
-def svg(body,w=1000,h=1000,title='serverku'):
+def svg(body,w=1000,h=1000,title=NAME):
     return f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" role="img" aria-label="{title}"><title>{title}</title>{body}</svg>'
 
 
 def wordmark(color,size=160):
     font=TTFont(FONT);glyphs=font.getGlyphSet();cmap=font.getBestCmap();scale=size/font['head'].unitsPerEm;x=0;parts=[]
-    for char in 'serverku':
+    for char in NAME:
         name=cmap[ord(char)];pen=SVGPathPen(glyphs);glyphs[name].draw(pen)
         parts.append(f'<path d="{pen.getCommands()}" transform="translate({x:.5f} {size}) scale({scale:.8f} {-scale:.8f})"/>')
         x+=font['hmtx'][name][0]*scale
@@ -53,18 +52,18 @@ def export(name,body,w=1000,h=1000,pixels=2048):
 
 
 def vectors():
-    for label,color,base in [('primary',INK,TEAL),('ink',INK,INK),('white',WHITE,WHITE),('black','#000000','#000000'),('teal',TEAL,TEAL)]:
+    for label,color,base in [('primary',INK,TEAL),('ink',INK,INK),('white',WHITE,WHITE),('black',BLACK,BLACK),('teal',TEAL,TEAL)]:
         export(f'serverku-mark-{label}',mark(color,base))
-    for label,color in [('ink',INK),('white',WHITE),('black','#000000')]:
+    for label,color in [('ink',INK),('white',WHITE),('black',BLACK)]:
         export(f'serverku-mark-micro-{label}',mark(color,micro=True))
-        letters,w=wordmark(color)
+        letters,w=wordmark(WORDMARK if label in ('ink','primary') else DARK_TEXT if label=='white' else BLACK)
         export(f'serverku-wordmark-{label}',f'<g transform="translate(25 10)">{letters}</g>',int(w+50),220,2400)
-    for label,color,base in [('primary',INK,TEAL),('ink',INK,INK),('white',WHITE,WHITE),('black','#000000','#000000')]:
-        letters,w=wordmark(color)
+    for label,color,base in [('primary',INK,TEAL),('ink',INK,INK),('white',WHITE,WHITE),('black',BLACK,BLACK)]:
+        letters,w=wordmark(WORDMARK if label in ('ink','primary') else DARK_TEXT if label=='white' else BLACK)
         body=f'<g transform="translate(0 0) scale(.32)">{mark(color,base)}</g><g transform="translate(365 62)">{letters}</g>'
         export(f'serverku-horizontal-{label}',body,int(w+400),320,2400)
     for label,color,base in [('primary',INK,TEAL),('ink',INK,INK),('white',WHITE,WHITE)]:
-        letters,w=wordmark(color,155)
+        letters,w=wordmark(WORDMARK if label in ('ink','primary') else DARK_TEXT,155)
         body=f'<g transform="translate(150 0) scale(.7)">{mark(color,base)}</g><g transform="translate({(1000-w)/2:g} 680)">{letters}</g>'
         export(f'serverku-stacked-{label}',body,1000,920)
     for label,bg,fg in [('dark',INK,WHITE),('light',WHITE,INK)]:
@@ -95,7 +94,7 @@ def icons():
         for size in [16,24,32,48,64]:direct.append({'input':str(ROOT/f'svg/serverku-mark-micro-{label}.svg'),'output':str(folder/f'serverku-symbol-{label}-{size}.png'),'width':size})
     p=TEMP/'icon-jobs.json';p.write_text(json.dumps(direct));subprocess.run(['node',str(SOURCE/'render.mjs'),str(p)],check=True)
     shutil.copy2(folder/'serverku-app-dark-32.png',folder/'favicon-32.png');shutil.copy2(folder/'serverku-app-dark-180.png',folder/'apple-touch-icon.png')
-    write('icons/site.webmanifest',json.dumps({'name':'serverku','short_name':'serverku','icons':[{'src':f'serverku-app-dark-{s}.png','sizes':f'{s}x{s}','type':'image/png','purpose':'any'} for s in [192,512]],'theme_color':INK,'background_color':WHITE},indent=2)+'\n')
+    write('icons/site.webmanifest',json.dumps({'name':NAME,'short_name':NAME,'icons':[{'src':f'serverku-app-dark-{s}.png','sizes':f'{s}x{s}','type':'image/png','purpose':'any'} for s in [192,512]],'theme_color':INK,'background_color':WHITE},indent=2)+'\n')
 
 
 def paste(out,im,box,bg=WHITE):
@@ -108,9 +107,9 @@ def sheets():
     semibold=lambda s:ImageFont.truetype(str(SEMI),s)
     def txt(d,xy,s,size=23,color=INK):d.text(xy,s,font=regular(size),fill=color)
     out=Image.new('RGB',(1800,1300),MIST);d=ImageDraw.Draw(out)
-    d.text((70,50),'serverku',font=ImageFont.truetype(str(FONT),67),fill=INK)
+    d.text((70,50),NAME,font=ImageFont.truetype(str(FONT),67),fill=INK)
     txt(d,(72,149),'Compute when needed. Keep configured data between runs.',28)
-    txt(d,(72,202),'ORIGINAL VECTOR PROPOSAL / SERVER + POWER / '+DATE,18,MUTED)
+    txt(d,(72,202),'APPROVED IDENTITY / SERVER + POWER / '+DATE,18,MUTED)
     d.rounded_rectangle((70,270,1110,910),radius=24,fill=WHITE)
     paste(out,Image.open(ROOT/'png/serverku-mark-primary.png'),(300,280,590,590))
     txt(d,(105,855),'ON-DEMAND COMPUTE / PERSISTENT STORAGE',20)
@@ -120,7 +119,7 @@ def sheets():
     d.rounded_rectangle((70,940,1730,1230),radius=24,fill=WHITE)
     paste(out,Image.open(ROOT/'png/serverku-horizontal-primary.png'),(100,960,1050,230))
     for i,col in enumerate([INK,TEAL,WHITE]):
-        x=1310+i*125;d.rounded_rectangle((x,1010,x+95,1105),radius=15,fill=col,outline='#DAE4E2');txt(d,(x,1130),col,16)
+        x=1310+i*125;d.rounded_rectangle((x,1010,x+95,1105),radius=15,fill=col,outline=BORDER);txt(d,(x,1130),col,16)
     out.save(ROOT/'serverku-overview.png')
     concept=Image.new('RGB',(1800,880),WHITE);d=ImageDraw.Draw(concept)
     panels=[('Primary / two-tone','serverku-mark-primary'),('One-color / same meaning','serverku-mark-ink'),('Micro / larger cutouts','serverku-mark-micro-ink')]
@@ -141,17 +140,17 @@ def sheets():
     im=Image.open(ROOT/'png/serverku-mark-primary.png')
     for i,(label,box) in enumerate([('Power arc and rounded cap',(770,430,1250,950)),('Chassis corner',(250,160,680,600)),('Storage detail',(440,1530,850,1750))]):
         paste(detail,im.crop(box),(i*600+30,150,540,500));txt(d,(i*600+30,710),label,24)
-    txt(d,(30,835),'Exact arcs, transparent even-odd cutouts, no embedded raster imagery or masks. Colors are proposals.',23,MUTED)
+    txt(d,(30,835),'Exact arcs, transparent even-odd cutouts, no embedded raster imagery or masks. Approved palette.',23,MUTED)
     detail.save(ROOT/'reference/curve-detail-check.png')
 
 
 def guide():
     for name,p in [('Body',REGULAR),('Semi',SEMI),('Logo',FONT)]:pdfmetrics.registerFont(RLFont(name,str(p)))
     c=canvas.Canvas(str(ROOT/'serverku-brand-guide.pdf'),pagesize=(842,595),invariant=1)
-    c.setTitle('serverku - Brand guide');c.setAuthor('serverku / Jufi')
+    c.setTitle('serverku - Brand guide');c.setAuthor(NAME)
     def rect(x,y,w,h,color,r=0):c.setFillColor(HexColor(color));c.roundRect(x,y,w,h,r,stroke=0,fill=1)
     def txt(x,y,s,size=12,color=INK,font='Body'):
-        c.setFillColor(HexColor(color));c.setFont(font,size);c.drawString(x,y,s)
+        c.setFillColor(HexColor(color));c.setFont(font,size);c.drawString(x,y,s.replace('serverku', NAME))
     def para(x,y,s,width=350,size=12,color=MUTED,leading=19):
         line=''
         for word in s.split():
@@ -164,32 +163,32 @@ def guide():
     def page(n,title,subtitle,kicker):
         rect(0,0,842,595,WHITE);txt(42,556,'SERVERKU / BRAND GUIDE',10,MUTED,'Semi');txt(680,556,DATE,10,MUTED)
         txt(42,510,title,30,INK,'Semi');txt(42,482,subtitle,11,MUTED);txt(42,25,kicker,9,MUTED);txt(760,25,f'{n:02d} / 07',9,MUTED)
-    page(1,'Compute when you need it.','On-demand cloud VMs for Docker Compose projects.','IDENTITY / ORIGINAL VECTOR PROPOSAL')
+    page(1,'Compute when you need it.','On-demand cloud VMs for Docker Compose projects.','IDENTITY / APPROVED 2026-11-10')
     txt(42,410,'serverku',48,INK,'Logo')
     para(44,358,'Create a runtime when needed. Keep configured project data on persistent storage between sessions.',330,16,INK,25)
     rect(440,130,360,330,MIST,22);img('png/serverku-mark-primary.png',470,146,300,300)
     para(44,231,'A server with a power control represents disposable compute. The separate base represents storage retained when the runtime is removed.',320,12)
-    para(44,112,'Owner-selected server + power direction. Logo geometry, colors, typography and usage defaults are new proposals. The headline is proposed brand copy.',740,10)
+    para(44,112,'Approved server + power artwork, palette, typography and placed-image rules. The headline remains suggested brand copy.',740,10)
     c.showPage()
     page(2,'One symbol. Two responsibilities.','Compute can come and go. Configured persistent storage can stay.','DESIGN RATIONALE')
     img('reference/design-rationale.png',30,150,782,300)
     para(42,126,'The primary mark uses two colors, but the same structure works in a single ink. The micro version widens the power cutout and replaces two storage details with one slot.',745,12)
-    para(42,70,'This is original hand-authored vector artwork, not a reconstruction of a raster master. Serverku had no supplied logo image. All colors and final contours await owner review.',745,10)
+    para(42,70,'This is original hand-authored vector artwork, not a reconstruction of a raster master. Serverku had no supplied logo image. Artwork and palette approved on 2026-11-10.',745,10)
     c.showPage()
     page(3,'A practical developer-tool identity.','Full mark, micro version and outlined lowercase lockups.','LOGO SYSTEM')
     for i,(name,label,desc) in enumerate([('serverku-mark-primary','Primary','Full server + power mark. Start at 48px.'),('serverku-mark-micro-ink','Micro','Wider cuts and one storage slot. Use at 16-32px.'),('serverku-mark-white','Reverse','White with transparent power and storage cuts.')]):
         x=42+i*260;rect(x,245,240,210,INK if i==2 else MIST,14);img(f'png/{name}.png',x+22,250,196,196)
         txt(x,220,label,17,INK,'Semi');para(x,195,desc,235,11)
     img('png/serverku-horizontal-primary.png',42,65,365,105)
-    para(445,140,'The wordmark uses lowercase serverku to match the CLI. Proposed lettering: Sora Semibold, delivered as vector outlines. Horizontal and stacked lockups are included.',350,11)
+    para(445,140,'The wordmark uses lowercase serverku to match the CLI. Approved lettering: Sora Semibold, delivered as vector outlines. Horizontal and stacked lockups are included.',350,11)
     c.showPage()
-    page(4,'Grounded ink. Active teal.','A new palette proposal; no existing application palette is being replaced.','COLOR & TYPOGRAPHY')
+    page(4,'Grounded ink. Active teal.','Approved palette for graphical materials; terminal appearance stays user-controlled.','COLOR & TYPOGRAPHY')
     for i,(label,color,role) in enumerate([('Deep Teal',INK,'Compute / lettering / main ink'),('Active Teal',TEAL,'Storage base / digital accent'),('White',WHITE,'Background / reverse artwork')]):
         x=42+i*260;rect(x,310,240,140,MIST,12);rect(x+12,322,216,116,color,8);txt(x,282,label,17,INK,'Semi');txt(x,258,color,14,MUTED);txt(x,232,role,10,MUTED)
-    txt(42,175,'serverku',33,INK,'Logo');para(42,130,'Sora Semibold: proposed wordmark. Plus Jakarta Sans Regular/Semibold: guide and supporting copy. Font files and SIL OFL licenses are bundled.',350,11)
+    txt(42,175,'serverku',33,INK,'Logo');para(42,130,'Sora Semibold 600: wordmark. Plus Jakarta Sans Regular/Semibold: guide and supporting copy. Font files and SIL OFL licenses are bundled.',350,11)
     txt(445,175,'Keep the CLI familiar.',17,INK,'Semi');para(445,145,'These are branding assets for docs, profiles and future product materials. They do not change terminal output, the user-selected terminal font or provider identities.',350,11)
     c.showPage()
-    page(5,'Keep the control clear.','Spacing and size defaults are proposals to check at final size.','USAGE & CLEAR SPACE')
+    page(5,'Keep the control clear.','Placed-image rules; use separate, legibility-tested sizing for UI chrome.','USAGE & CLEAR SPACE')
     rect(42,170,350,280,MIST,14);img('png/serverku-mark-primary.png',122,220,190,190)
     # Visible normalized bounds are 140..860 x 100..900. Padding is 1/4 visible height.
     c.setStrokeColor(HexColor(TEAL));c.setDash(3,3);c.rect(110.6,201,212.8,228,stroke=1,fill=0);c.setDash()
@@ -210,11 +209,11 @@ def guide():
     c.showPage()
     page(7,'Be specific about the lifecycle.','Product facts and voice for consistent, accurate brand materials.','PRODUCT & HANDOFF')
     txt(42,432,'Who it is for',19,INK,'Semi');y=para(42,400,'Developers running side projects, previews, staging, demos and internal tools that do not need compute all day. Uses existing Docker Compose projects on GCP or DigitalOcean.',350,12)
-    y=para(42,y-15,'up creates a VM and deploys. down removes the VM and keeps configured persistent disks. destroy removes cloud resources, including disks and snapshots.',350,12)
+    y=para(42,y-15,'up creates a VM and deploys. down removes the VM and keeps configured persistent storage. destroy deletes the tracked disk and local project configuration.',350,12)
     para(42,y-15,'Only data on configured persistent storage survives down. Retained storage and other provider charges can continue; do not promise zero cost or a fixed savings percentage.',350,12)
     txt(445,432,'How to talk about it',19,INK,'Semi');y=para(445,400,'Use direct, practical language: "Start your Compose project when needed" and "Keep configured data between sessions." Explain which resources remain and distinguish price estimates from bills.',350,12)
     para(445,y-16,'Avoid "serverless," "free when stopped," "your data can never be lost," or claims that down is simply a paused VM. Stay provider-neutral.',350,12)
-    para(42,100,'Handoff: original SVGs, PNGs, icon candidates, brand-information.md, licensed fonts and portable source. No application logic, credentials, cloud resources, release or deployment was changed.',745,10)
+    para(42,100,'Handoff: original SVGs, PNGs, icon candidates, brand-information.md, licensed fonts and portable source. Terminal appearance and cloud behavior are unchanged.',745,10)
     c.showPage();c.save()
 
 
@@ -223,16 +222,22 @@ def file_list():
 
 
 def package():
-    write('manifest.json',json.dumps({'brand':'serverku','date':DATE,'files':{str(p.relative_to(ROOT)):{'sha256':sha(p),'bytes':p.stat().st_size} for p in file_list()}},indent=2)+'\n')
-    archive=ROOT.parent/'serverku-ready-to-use.zip'
-    with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
-        for p in sorted(file_list()+[ROOT/'manifest.json']):
-            info=zipfile.ZipInfo('ready-to-use/'+str(p.relative_to(ROOT)),(2026,11,10,0,0,0));info.compress_type=zipfile.ZIP_DEFLATED;info.external_attr=0o100644<<16;z.writestr(info,p.read_bytes())
-    return archive
+    write('manifest.json',json.dumps({'brand':NAME,'date':DATE,'files':{str(p.relative_to(ROOT)):{'sha256':sha(p),'bytes':p.stat().st_size} for p in file_list()}},indent=2)+'\n')
+
+
+def context():
+    # Read the maintained repository, never copied application snapshots.
+    sources = ['README.md', 'cmd/serverku/lifecycle.go', 'internal/orchestrator/orchestrator.go', 'brand/tokens.json']
+    write('reference/repo-context.json', json.dumps({
+        'source_files': {name: {'sha256': sha(REPO/name)} for name in sources},
+        'scope': 'Graphical brand kit and documentation; terminal output unchanged.'
+    }, indent=2)+'\n')
+    substitutions = {'name': NAME, **{key: value['value'] for key, value in TOKENS['colors'].items()}}
+    write('brand-information.md', Template((SOURCE/'brand-information.template.md').read_text()).substitute(substitutions))
 
 
 def main():
-    vectors();render();icons();sheets();guide();package();print(f'Built {len(jobs)} original Serverku SVG/PNG variants and seven-page PDF.')
+    context();vectors();render();icons();sheets();guide();package();print(f'Built {len(jobs)} original Serverku SVG/PNG variants and seven-page PDF.')
 
 
 if __name__=='__main__':main()

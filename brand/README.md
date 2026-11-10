@@ -1,18 +1,12 @@
-# serverku branding
+# serverku brand
 
-Local proposal as of 2026-11-10, created directly in this repository for `serverku#22`.
+Approved server + power artwork, deep/active teal palette, lowercase Sora Semibold 600 wordmark and placed-image rules. Approval date: 2026-11-10. Terminal fonts and colours remain user-controlled.
 
-The owner selected **server + power**. The symbol places a power control in an upper compute chassis and separates it from a persistent storage base. This is new hand-authored vector artwork; no Flow image or raster reconstruction is involved.
+- [Brand reference and change recipes](../docs/reference/brand.md)
+- [Project brand skill](../.claude/skills/serverku-brand/SKILL.md)
+- [Kit and rebuild instructions](kit/README.md)
+- [Overview](kit/serverku-overview.png)
+- [Seven-page guide](kit/serverku-brand-guide.pdf)
+- [Canonical palette and surface mappings](tokens.json)
 
-Start here:
-
-- [Brand overview](ready-to-use/serverku-overview.png)
-- [Brand information](ready-to-use/brand-information.md)
-- [Asset map and rebuild instructions](ready-to-use/README.md)
-- [Primary SVG](ready-to-use/svg/serverku-mark-primary.svg)
-- [PDF guide](ready-to-use/serverku-brand-guide.pdf)
-- [Complete ZIP](serverku-ready-to-use.zip)
-
-`ready-to-use/` is the portable delivery; its `source/` directory contains editable geometry, outlined wordmark generation, pinned dependencies and licensed fonts. Colors, final contours, typography and usage defaults remain proposals for owner review.
-
-No application logic, CLI output, credentials, cloud resources, release or deployment was changed. Existing unrelated work in `guides/kuma-guides/` is preserved. Platform icons are publishing candidates, not application integrations.
+The original delivery and before guide renders are preserved in Git history. Historical reference notes are explicitly labelled; they do not override the approved reference or current application behavior. Platform icons are publishing assets, not an application integration.

@@ -3,12 +3,12 @@
   "date": "2026-11-10",
   "files": {
     "README.md": {
-      "sha256": "a1a506fe3be54f27d030f907cf94b62cab68ce235fa855837ff4c9b36c72a238",
-      "bytes": 3291
+      "sha256": "7d6a4cfab9d9d0fc06c83ac6b42d43645bbaa1fe6d617c231ff217e9fa6bcbed",
+      "bytes": 2125
     },
     "brand-information.md": {
-      "sha256": "aa39c08d0fbef04bee9e176bb40fc759bb68951776102de9f63cdd31a52d8487",
-      "bytes": 6003
+      "sha256": "716cc977fbf1f26ebd17acb041fc2726f78ebb20ef8ba798a88a86f7a94b2664",
+      "bytes": 6068
     },
     "icons/apple-touch-icon.png": {
       "sha256": "8ff5b4e173c6a28490ebaf6a8f26d8b9681c553f58c2aa28822721f516449d9a",
@@ -302,61 +302,57 @@
       "sha256": "9799f3bb7ce8ac42108ab3cf7f03a678bcadab5fd051d81e5b3a36a066c32fa6",
       "bytes": 53036
     },
-    "reference/app-alignment.md": {
-      "sha256": "dc14ebcbfc6f7bf8ae1e5a08cbfcd7637f6babcf35c92ab1d3e288a93f5d7de7",
-      "bytes": 1640
-    },
-    "reference/brand-tokens.json": {
-      "sha256": "ff982a65709670aa818f2994b64e15ad4be1583de1207dcbe752ebeb8f2888ff",
-      "bytes": 825
-    },
     "reference/curve-detail-check.png": {
-      "sha256": "5134cd81241e39de1d8a4a7df45b751d95b2c1f017778ec0c65345041abf9633",
-      "bytes": 55067
+      "sha256": "ea18a5832c5ae5aaa5dcb01d76ec7b76f8ca138d1e11e629efa54592734bf0f4",
+      "bytes": 54963
     },
     "reference/design-rationale.png": {
       "sha256": "7d648543fef783c3108eb53a6ce417754efa79be37259b6b5c0470c370eceeee",
       "bytes": 61751
     },
-    "reference/pdf-review.json": {
-      "sha256": "ffaf95f91ee4484273d72d041df8ec28a0f4b5e5e4e9c0d02cd33d9e5dec86d4",
-      "bytes": 511
+    "reference/historical-app-alignment.md": {
+      "sha256": "d7ab59d2365d12ed01718eccfeeedbddd34ea2442b5f09658081a62b85a7b22e",
+      "bytes": 1753
     },
-    "reference/provenance.json": {
-      "sha256": "41429dc4d69a20592737d7ebee08ea07d5766f681f25d5160ea898ac1f2ec5c7",
-      "bytes": 1914
+    "reference/historical-provenance.json": {
+      "sha256": "b25117d6bdd8fd410898f6b6d10abd82fd9581350bbac306d5f8847fe344dcfc",
+      "bytes": 2027
+    },
+    "reference/historical-validation.json": {
+      "sha256": "3166252f719ddc098b34762de191c9ab5ac71992d19786eb6e275a5de05691c9",
+      "bytes": 929
+    },
+    "reference/pdf-review.json": {
+      "sha256": "7ed3623999acd0e7b885efee4ffcc0a5e86069838f4c2a6cb2f06e19692fffac",
+      "bytes": 463
+    },
+    "reference/repo-context.json": {
+      "sha256": "6ed090a88fa5853d0f2956707e2126ac302a92dddfc5bcfb02b29b69a06ee44c",
+      "bytes": 595
     },
     "reference/small-size-check.png": {
       "sha256": "19d6d25f355ec2b179e39e7df1643627a69055be39d41ce4a19671bee4e5ec52",
       "bytes": 43470
     },
-    "reference/validation.json": {
-      "sha256": "0ab277bdd3e62e47d72bfc8ac3798556d4a7e2148a3ecbcf6087705489c6e5bd",
-      "bytes": 816
-    },
     "serverku-brand-guide.pdf": {
-      "sha256": "623fc1ced767b9237b7d093b5ee535ce046e20c58fba8ce23f80abd200eef8d9",
-      "bytes": 494160
+      "sha256": "cd8929419ae17d32ebfe1ebd48014f61e9876885c0401bc1ea42c67ebb846454",
+      "bytes": 494102
     },
     "serverku-overview.png": {
-      "sha256": "859dd584a0e23468554fe7da8652d2c0b410e2473b784dbe1afd8cc7391abfe1",
-      "bytes": 109239
+      "sha256": "b9334206849d597b489ba4cd23fb9c10ab53b220059392866de85d135e1eacbb",
+      "bytes": 108706
     },
     "source/README.md": {
-      "sha256": "98ee4a7e6acd8a33442f4ec43a47c34e4a145e1ff2d6b5c4bbe82dc11b0701b6",
-      "bytes": 947
+      "sha256": "4dae084c7172a304f636317278a815355cf0fd5b90f3fba5db48343f83b35eb9",
+      "bytes": 756
     },
-    "source/app-snapshots/README.md": {
-      "sha256": "c046fb6c414f8233570fe259e55f35182f3c4b03b5937f55b27c277a0136cc4c",
-      "bytes": 29128
-    },
-    "source/app-snapshots/lifecycle.go.txt": {
-      "sha256": "ef9e0c33ad64c1fe741271ba9b3e48de1d795d6b048b363b05c7a900a8658056",
-      "bytes": 9941
+    "source/brand-information.template.md": {
+      "sha256": "32a9ff271f6886ea78efd888ead7ba80cf94114e4e1bb7fbb339e0f455bcd3e0",
+      "bytes": 6061
     },
     "source/build_kit.py": {
-      "sha256": "4a982fb111c761d3fff5f6a5b79890db4c090ab8c06b7d580a4d5e61b54730f2",
-      "bytes": 17959
+      "sha256": "06d20f9e4874858f0424130aad11c70a72664e671fc3ac7447dd08c2ec72cdf2",
+      "bytes": 18397
     },
     "source/fonts/OFL-PlusJakartaSans.txt": {
       "sha256": "995c7199cab65954f545996326755daee7b63cc6b42b06c13da1f9502ab08a99",
@@ -379,8 +375,8 @@
       "bytes": 58604
     },
     "source/geometry.py": {
-      "sha256": "41bff4a10c615582b280064a93df2eaf026f0fb08fe2a1136271367dc5d2e003",
-      "bytes": 1554
+      "sha256": "c37f47579302e6c76c80d635902d94efbca2dfedfa516b838ff97ed4475ba54f",
+      "bytes": 1546
     },
     "source/package-lock.json": {
       "sha256": "1a8b34298f2e1d7e647faa5179b21f9e571507a0e44c938939993a3e9b43f690",
@@ -389,6 +385,10 @@
     "source/package.json": {
       "sha256": "629cc241e415d19f16935dedc723c8feaab7d6a322cd85120a69c28fd29398e4",
       "bytes": 136
+    },
+    "source/palette.py": {
+      "sha256": "b2d492ed6adbc3600d60de8b8d48bc323cb556644cf2f8c3ac5fbdc136651805",
+      "bytes": 604
     },
     "source/render.mjs": {
       "sha256": "b1f57968ee867d651e6b2c83d46da0c8e6f1173f1f5391db2939e9724a8772b5",
@@ -399,8 +399,8 @@
       "bytes": 63
     },
     "source/verify_kit.py": {
-      "sha256": "de787f446966cca5f3ba2245a826fd8fb8389ee2454458c1f049e0701f322020",
-      "bytes": 5460
+      "sha256": "5bbded3be391aa5649f8c844197ffe046c9198421f64dd25ae41224a48aa9f1a",
+      "bytes": 4058
     },
     "svg/serverku-app-icon-dark.svg": {
       "sha256": "d9bd4b9ae132c2f6e157a02eb7ccb277c1ca76441d58d605b57287610f00fc82",

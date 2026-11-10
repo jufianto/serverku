@@ -4,9 +4,7 @@ Analytic circular arcs and rounded rectangles; no tracing, masks or rasters.
 """
 from math import cos, sin, radians
 
-INK='#173D42'
-TEAL='#0D9488'
-WHITE='#FFFFFF'
+from palette import INK, TEAL, WHITE
 
 
 def rounded_rect(x,y,w,h,r):

@@ -1,17 +1,12 @@
 {
   "source_files": {
-    "README.md": {
-      "sha256": "eb302cc0761b29b0e371580f313f8c25d76b9742ff19b552c4302ffb7beb0354"
-    },
-    "cmd/serverku/lifecycle.go": {
-      "sha256": "8305f94caf4170c7863deba5dbc2fd1348df406711b8c901d2a223f5963823ff"
-    },
-    "internal/orchestrator/orchestrator.go": {
-      "sha256": "4fa278c7180613a155aa29fb5f460717ee9576a78dd14b89b128953e5b7d6848"
-    },
     "brand/tokens.json": {
       "sha256": "766f857d3ef7d2deb619133cf73789fcf27ec4f77b9a2510a128711dff40ddda"
     }
   },
+  "lifecycle_copy_reviewed_against": [
+    "cmd/serverku/lifecycle.go",
+    "internal/orchestrator/orchestrator.go"
+  ],
   "scope": "Graphical brand kit and documentation; terminal output unchanged."
 }

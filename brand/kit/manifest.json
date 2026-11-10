@@ -327,8 +327,8 @@
       "bytes": 463
     },
     "reference/repo-context.json": {
-      "sha256": "6ed090a88fa5853d0f2956707e2126ac302a92dddfc5bcfb02b29b69a06ee44c",
-      "bytes": 595
+      "sha256": "b4e7e0c350a1c63091e1584344007e3a3e1e2b0aa9cb0c067aa48beae2f204ae",
+      "bytes": 345
     },
     "reference/small-size-check.png": {
       "sha256": "19d6d25f355ec2b179e39e7df1643627a69055be39d41ce4a19671bee4e5ec52",
@@ -351,8 +351,8 @@
       "bytes": 6061
     },
     "source/build_kit.py": {
-      "sha256": "06d20f9e4874858f0424130aad11c70a72664e671fc3ac7447dd08c2ec72cdf2",
-      "bytes": 18397
+      "sha256": "0e1f451b67586f7f52ce7e69414b9feecdd5b80817853384b6b6d2e5dba2b8f3",
+      "bytes": 18501
     },
     "source/fonts/OFL-PlusJakartaSans.txt": {
       "sha256": "995c7199cab65954f545996326755daee7b63cc6b42b06c13da1f9502ab08a99",

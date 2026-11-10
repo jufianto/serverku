@@ -41,6 +41,16 @@ class PaletteMutations(unittest.TestCase):
         path.write_text(path.read_text().replace('<g fill="#FFFFFF">', '<g fill="#536B6E">'))
         self.assertTrue(any('fill role drift' in error for error in guard.check(self.root)))
 
+    def test_short_decimal_hex_fails_in_stylesheets(self):
+        (self.root / 'new-surface.css').write_text('body { color: #123; }\n')
+        self.assertTrue(any('has no token' in error for error in guard.check(self.root)))
+
+    def test_issue_references_in_prose_pass(self):
+        (self.root / 'notes.md').write_text('Fixed in #123 and #4567; see #abc.\n')
+        errors = guard.check(self.root)
+        self.assertFalse(any('#123' in e or '#4567' in e for e in errors), errors)
+        self.assertTrue(any('#abc' in e for e in errors), errors)
+
     def test_named_colour_fails(self):
         (self.root / 'new-surface.css').write_text('body { color: red; }\n')
         self.assertTrue(any('named colour' in error for error in guard.check(self.root)))

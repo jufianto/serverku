@@ -13,6 +13,8 @@ import xml.etree.ElementTree as ET
 HEX = re.compile(r'(?<![\w#])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![\w])')
 FUNCTION = re.compile(r'\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\s*\([^\n;]*?\)', re.I)
 CSS_NAMED = re.compile(r'(?:\b(?:fill|stroke)\s*=\s*[\"\']|(?:color|background(?:-color)?|border-color|fill|stroke)\s*:\s*)([a-zA-Z]+)(?=[;\s\"\'}])')
+# Files where a short hex colour is real syntax; elsewhere '#123' is usually an issue or PR number.
+STYLE = {'.css', '.scss', '.html', '.svg', '.js', '.jsx', '.mjs', '.ts', '.tsx'}
 TEXT = {'.py', '.mjs', '.js', '.jsx', '.ts', '.tsx', '.css', '.scss', '.html', '.svg', '.json', '.webmanifest', '.md', '.go', '.dart', '.yaml', '.yml', '.txt'}
 
 
@@ -56,7 +58,10 @@ def check(root):
         text = path.read_text(encoding='utf-8')
         if name != 'brand/tokens.json':
             for match in HEX.finditer(text):
-                if canonical(match.group()) not in allowed:
+                value = match.group()
+                if len(value) in (4, 5) and value[1:].isdigit() and path.suffix not in STYLE:
+                    continue  # issue/PR reference such as #123, not a colour
+                if canonical(value) not in allowed:
                     errors.append(f'{name}: colour {match.group()} has no token')
             # Functional and named CSS colours must be expressed as tokens/hex.
             for match in FUNCTION.finditer(text):

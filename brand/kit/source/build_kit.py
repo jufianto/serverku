@@ -217,8 +217,24 @@ def guide():
     c.showPage();c.save()
 
 
+# Local-only files never enter the manifest (shared with scripts/check_brand.py).
+LOCAL_ONLY = {'.build', 'node_modules', '__pycache__', '.DS_Store', '.venv', 'venv'}
+GENERATED_DIRS = ['svg', 'png', 'icons']
+GENERATED_FILES = ['serverku-overview.png', 'serverku-brand-guide.pdf', 'brand-information.md', 'manifest.json',
+                   'reference/repo-context.json', 'reference/design-rationale.png',
+                   'reference/small-size-check.png', 'reference/curve-detail-check.png']
+
+
+def clean():
+    # Start from nothing generated, so an output the builder stops making cannot survive.
+    for name in GENERATED_DIRS:
+        shutil.rmtree(ROOT/name, ignore_errors=True)
+    for name in GENERATED_FILES:
+        (ROOT/name).unlink(missing_ok=True)
+
+
 def file_list():
-    return sorted(p for p in ROOT.rglob('*') if p.is_file() and p.name!='manifest.json' and not any(part in {'.build','node_modules','__pycache__','.DS_Store'} for part in p.relative_to(ROOT).parts))
+    return sorted(p for p in ROOT.rglob('*') if p.is_file() and p.name!='manifest.json' and p.suffix!='.zip' and not any(part in LOCAL_ONLY for part in p.relative_to(ROOT).parts))
 
 
 def package():
@@ -238,7 +254,7 @@ def context():
 
 
 def main():
-    context();vectors();render();icons();sheets();guide();package();print(f'Built {len(jobs)} original Serverku SVG/PNG variants and seven-page PDF.')
+    clean();context();vectors();render();icons();sheets();guide();package();print(f'Built {len(jobs)} original Serverku SVG/PNG variants and seven-page PDF.')
 
 
 if __name__=='__main__':main()

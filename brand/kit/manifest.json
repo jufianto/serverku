@@ -3,8 +3,8 @@
   "date": "2026-11-10",
   "files": {
     "README.md": {
-      "sha256": "7d6a4cfab9d9d0fc06c83ac6b42d43645bbaa1fe6d617c231ff217e9fa6bcbed",
-      "bytes": 2125
+      "sha256": "5f47e8870595e785f17510e5abb3b4120ef12361670e1c22ff5a151189118048",
+      "bytes": 2208
     },
     "brand-information.md": {
       "sha256": "716cc977fbf1f26ebd17acb041fc2726f78ebb20ef8ba798a88a86f7a94b2664",
@@ -351,8 +351,8 @@
       "bytes": 6061
     },
     "source/build_kit.py": {
-      "sha256": "0e1f451b67586f7f52ce7e69414b9feecdd5b80817853384b6b6d2e5dba2b8f3",
-      "bytes": 18501
+      "sha256": "86264b4ebcdb679bed76786dd03e3bab0f7b8cb785a912e56297febf7d257a39",
+      "bytes": 19252
     },
     "source/fonts/OFL-PlusJakartaSans.txt": {
       "sha256": "995c7199cab65954f545996326755daee7b63cc6b42b06c13da1f9502ab08a99",

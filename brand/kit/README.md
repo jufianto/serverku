@@ -19,6 +19,7 @@ See [the brand reference](../../docs/reference/brand.md) for file selection, usa
 From the repository root, with Python 3.11+ and Node.js 20+:
 
 ```sh
+python3 -m venv .venv && . .venv/bin/activate   # any venv outside brand/kit works
 python3 -m pip install -r brand/kit/source/requirements.txt
 npm ci --prefix brand/kit/source
 make brand-build

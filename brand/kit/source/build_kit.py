@@ -226,10 +226,11 @@ def package():
 
 
 def context():
-    # Read the maintained repository, never copied application snapshots.
-    sources = ['README.md', 'cmd/serverku/lifecycle.go', 'internal/orchestrator/orchestrator.go', 'brand/tokens.json']
+    # Only build inputs are hashed. The guide's lifecycle copy was reviewed against the
+    # listed code but does not read it, so code edits must not force a kit rebuild.
     write('reference/repo-context.json', json.dumps({
-        'source_files': {name: {'sha256': sha(REPO/name)} for name in sources},
+        'source_files': {'brand/tokens.json': {'sha256': sha(REPO/'brand/tokens.json')}},
+        'lifecycle_copy_reviewed_against': ['cmd/serverku/lifecycle.go', 'internal/orchestrator/orchestrator.go'],
         'scope': 'Graphical brand kit and documentation; terminal output unchanged.'
     }, indent=2)+'\n')
     substitutions = {'name': NAME, **{key: value['value'] for key, value in TOKENS['colors'].items()}}

@@ -1,0 +1,20 @@
+{
+  "name": "serverku",
+  "short_name": "serverku",
+  "icons": [
+    {
+      "src": "serverku-app-dark-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "serverku-app-dark-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "theme_color": "#173D42",
+  "background_color": "#FFFFFF"
+}

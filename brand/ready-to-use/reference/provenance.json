@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-10",
+  "artwork_status": "Original hand-authored vector proposal; no supplied raster master, tracing, generated image or reconstruction.",
+  "owner_selected_direction": "Server + power symbol",
+  "concept": "On-demand compute chassis and power control above a separate retained-storage base.",
+  "source_files": {
+    "source/app-snapshots/README.md": {
+      "sha256": "c046fb6c414f8233570fe259e55f35182f3c4b03b5937f55b27c277a0136cc4c",
+      "bytes": 29128
+    },
+    "source/fonts/Sora-600.ttf": {
+      "sha256": "9b2bb0cb1d550b8b28f69d40e20374f7e608a42078ca5d45804f2fc85cb98111",
+      "bytes": 58604
+    },
+    "source/fonts/PlusJakartaSans-600.ttf": {
+      "sha256": "7f84de32c933a517604990b80d24406e88868767f7ee3ba3b4ad3e3870cc5a80",
+      "bytes": 29532
+    },
+    "source/fonts/OFL-PlusJakartaSans.txt": {
+      "sha256": "995c7199cab65954f545996326755daee7b63cc6b42b06c13da1f9502ab08a99",
+      "bytes": 4402
+    },
+    "source/fonts/PlusJakartaSans-400.ttf": {
+      "sha256": "02a20292cad94f8ec5850b8217818bada6758d1ef8212253a3030d993af0589a",
+      "bytes": 29468
+    },
+    "source/fonts/OFL-Sora.txt": {
+      "sha256": "ba0b9729c9428ba79a0459ab8ec575791b51509dbec213e383d0316d37fec299",
+      "bytes": 4385
+    },
+    "source/app-snapshots/lifecycle.go.txt": {
+      "sha256": "ef9e0c33ad64c1fe741271ba9b3e48de1d795d6b048b363b05c7a900a8658056",
+      "bytes": 9941
+    }
+  },
+  "palette_status": "Deep teal and active teal are new proposals, not existing app tokens.",
+  "type_status": "Outlined Sora Semibold wordmark; Plus Jakarta Sans supporting copy; proposed, no terminal font changes.",
+  "fonts": "Existing licensed Sora and Plus Jakarta Sans font files from the product-branding workspace, with OFL license texts.",
+  "adoption": "Local repository brand delivery; README links to the kit. No app logic, credentials, cloud resources, release or deployment changed."
+}
